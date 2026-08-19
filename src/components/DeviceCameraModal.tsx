@@ -122,12 +122,34 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
       mediaStreamRef.current = stream;
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        try {
-          await videoRef.current.play();
-        } catch (playErr) {
-          console.warn('Video play warning:', playErr);
-        }
+        const video = videoRef.current;
+        video.srcObject = stream;
+        video.muted = true;
+        video.defaultMuted = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('webkit-playsinline', 'true');
+        video.setAttribute('autoplay', 'true');
+        video.setAttribute('muted', 'true');
+
+        const attemptPlay = async () => {
+          try {
+            if (video.paused) {
+              await video.play();
+            }
+          } catch (playErr) {
+            console.warn('Video play warning:', playErr);
+          }
+        };
+
+        video.onloadedmetadata = () => {
+          attemptPlay();
+        };
+        video.oncanplay = () => {
+          attemptPlay();
+        };
+
+        attemptPlay();
       }
     } catch (err: any) {
       console.warn('getUserMedia error:', err);
@@ -203,6 +225,24 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
     };
   }, [isOpen, currentFacingMode, startCameraStream, stopAllTracks]);
 
+  // Helper to convert data URL to File synchronously
+  const dataURLtoFile = (dataurl: string, filename: string): File => {
+    try {
+      const arr = dataurl.split(',');
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new File([u8arr], filename, { type: mime });
+    } catch {
+      return new File([], filename, { type: 'image/jpeg' });
+    }
+  };
+
   // Toggle Front / Back Camera
   const handleFlipCamera = () => {
     const nextFacing = currentFacingMode === 'user' ? 'environment' : 'user';
@@ -239,10 +279,15 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
     setCapturedPhotoUrl(dataUrl);
 
-    // Convert to real File object
+    // Convert to real File object synchronously so it is always immediately available
+    const filename = `photo_${Date.now()}.jpg`;
+    const syncFile = dataURLtoFile(dataUrl, filename);
+    setCapturedFile(syncFile);
+
+    // Fallback async blob creation to keep metadata intact
     canvas.toBlob((blob) => {
       if (blob) {
-        const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const file = new File([blob], filename, { type: 'image/jpeg' });
         setCapturedFile(file);
       }
     }, 'image/jpeg', 0.92);
@@ -498,6 +543,24 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
               autoPlay
               playsInline
               muted
+              controls={false}
+              disablePictureInPicture
+              disableRemotePlayback
+              onLoadedMetadata={() => {
+                if (videoRef.current && videoRef.current.paused) {
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
+              onCanPlay={() => {
+                if (videoRef.current && videoRef.current.paused) {
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
+              onClick={() => {
+                if (videoRef.current && videoRef.current.paused) {
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
               className={`w-full h-full object-cover ${currentFacingMode === 'user' ? 'scale-x-[-1]' : ''}`}
             />
 

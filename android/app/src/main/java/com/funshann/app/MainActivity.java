@@ -97,8 +97,28 @@ public class MainActivity extends AppCompatActivity {
             webView.loadUrl(APP_ASSET_URL);
         }
 
+        // Proactively request runtime camera and audio permissions if needed
+        checkAndRequestAppPermissions();
+
         // Register resilient network state listener
         registerNetworkCallback();
+    }
+
+    private void checkAndRequestAppPermissions() {
+        try {
+            List<String> permissions = new ArrayList<>();
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(Manifest.permission.CAMERA);
+            }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(Manifest.permission.RECORD_AUDIO);
+            }
+            if (!permissions.isEmpty()) {
+                ActivityCompat.requestPermissions(this, permissions.toArray(new String[0]), PERMISSION_REQUEST_CAMERA);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking runtime permissions", e);
+        }
     }
 
     private void enableEdgeToEdge() {
@@ -516,10 +536,18 @@ public class MainActivity extends AppCompatActivity {
                     break;
                 }
             }
-            if (cameraGranted) {
-                launchCameraPhotoIntent();
-            } else {
-                if (mFilePathCallback != null) {
+            if (mPendingWebPermissionRequest != null) {
+                if (cameraGranted) {
+                    mPendingWebPermissionRequest.grant(mPendingWebPermissionRequest.getResources());
+                } else {
+                    mPendingWebPermissionRequest.deny();
+                }
+                mPendingWebPermissionRequest = null;
+            }
+            if (mFilePathCallback != null) {
+                if (cameraGranted) {
+                    launchCameraPhotoIntent();
+                } else {
                     mFilePathCallback.onReceiveValue(null);
                     mFilePathCallback = null;
                 }
