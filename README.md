@@ -1,11 +1,53 @@
-<div align="center">
+# Funshann - Android Social App (Capacitor & Native Ready)
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+This repository contains the full source code for the **Funshann** social network application.
 
-  <h1>Built with AI Studio</h2>
+## 🚀 Converting to Android Studio & Generating APK
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+The project is built as a modern React + Vite application with Capacitor Android integration readiness and native Android Studio project structure.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+### Option 1: Generate Android Studio Project via Capacitor (Recommended & Fastest)
+To generate the native Android Studio project and build the APK:
 
-</div>
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Add Capacitor dependencies
+npm install @capacitor/core @capacitor/cli @capacitor/android
+
+# 3. Initialize Capacitor
+npx cap init Funshann com.funshann.app --web-dir dist
+
+# 4. Build the web distribution
+npm run build
+
+# 5. Add Android native project & sync
+npx cap add android
+npx cap sync
+
+# 6. Open in Android Studio or build APK via Gradle
+npx cap open android
+```
+
+### Option 2: Building Debug APK via Command Line (Gradle)
+Once `npx cap add android` has generated the `android/` directory:
+
+```bash
+cd android
+./gradlew assembleDebug
+```
+The compiled APK will be located at:
+`android/app/build/outputs/apk/debug/app-debug.apk`
+
+---
+
+## 📱 Features
+- **3D Soft Neumorphic Design System**
+- **Full Feed with Post Expand/Collapse ("Read More" / "Show Less")**
+- **Stories & Animated Story Viewer**
+- **Interactive Comment Drawer & Lightbox**
+- **User Discovery, Search & Follow System**
+- **Full User Profiles with Photos, Bio, Interests & Social Links**
+- **Direct Messaging with Audio/Voice Notes & Wallpapers**
+- **Custom Theme Studio (Light, Dark, Golden, AMOLED)**

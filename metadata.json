@@ -1,0 +1,6 @@
+{
+  "name": "Funshann",
+  "description": "A premium Android social networking app featuring clean soft 3D neumorphism, stories, interactive feed, photo uploads, voice messages, messaging, and profile management.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
