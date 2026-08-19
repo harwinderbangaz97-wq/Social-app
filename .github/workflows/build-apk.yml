@@ -46,6 +46,7 @@ jobs:
         with:
           gradle-version: '8.5'
           build-root-directory: ./android
+          validate-wrappers: false
 
       - name: Build Debug APK with Gradle
         working-directory: ./android
