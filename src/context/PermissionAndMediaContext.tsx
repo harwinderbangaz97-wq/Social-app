@@ -211,19 +211,24 @@ export const PermissionAndMediaProvider: React.FC<{ children: React.ReactNode }>
     [updatePermission]
   );
 
-  const handleCameraCapture = (result: MediaPickerResult) => {
-    if (pendingCameraSession) {
-      pendingCameraSession.resolve(result);
-      setPendingCameraSession(null);
-    }
-  };
+  const pendingCameraSessionRef = React.useRef<PendingCameraSession | null>(null);
+  pendingCameraSessionRef.current = pendingCameraSession;
 
-  const handleCameraCancel = () => {
-    if (pendingCameraSession) {
-      pendingCameraSession.resolve(null);
-      setPendingCameraSession(null);
+  const handleCameraCapture = useCallback((result: MediaPickerResult) => {
+    const session = pendingCameraSessionRef.current;
+    if (session) {
+      session.resolve(result);
     }
-  };
+    setPendingCameraSession(null);
+  }, []);
+
+  const handleCameraCancel = useCallback(() => {
+    const session = pendingCameraSessionRef.current;
+    if (session) {
+      session.resolve(null);
+    }
+    setPendingCameraSession(null);
+  }, []);
 
   return (
     <PermissionAndMediaContext.Provider

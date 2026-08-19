@@ -61,7 +61,9 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
 
     // Stop existing tracks
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      try {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      } catch {}
       mediaStreamRef.current = null;
     }
 
@@ -70,21 +72,62 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
         throw new Error('Camera device access is not supported in this browser.');
       }
 
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: facing,
-          width: { ideal: 1920, max: 2560 },
-          height: { ideal: 1080, max: 1440 },
-        },
-        audio: mode === 'video',
-      };
+      let stream: MediaStream | null = null;
+      let lastError: any = null;
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // Attempt 1: Ideal facingMode and preferred resolution
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+          },
+          audio: mode === 'video',
+        });
+      } catch (err1) {
+        lastError = err1;
+      }
+
+      // Attempt 2: Fallback without audio constraint if audio failed during video mode
+      if (!stream && mode === 'video') {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: facing },
+            },
+            audio: false,
+          });
+        } catch (err2) {
+          lastError = err2;
+        }
+      }
+
+      // Attempt 3: Standard generic video stream without facing constraint
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        } catch (err3) {
+          lastError = err3;
+        }
+      }
+
+      if (!stream) {
+        throw lastError || new Error('Could not access camera hardware.');
+      }
+
       mediaStreamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          console.warn('Video play warning:', playErr);
+        }
       }
     } catch (err: any) {
       console.warn('getUserMedia error:', err);
@@ -101,23 +144,46 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
 
   // Clean up tracks when closing
   const stopAllTracks = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
-      } catch {}
-    }
+      }
+    } catch {}
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      try {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      } catch {}
       mediaStreamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
   }, []);
+
+  const handleCloseModal = useCallback(() => {
+    try {
+      stopAllTracks();
+    } catch (err) {
+      console.error(err);
+    }
+    onCancel();
+  }, [onCancel, stopAllTracks]);
+
+  // Listen for Escape key or Android gesture back when camera modal is active
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        e.preventDefault();
+        handleCloseModal();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleCloseModal]);
 
   useEffect(() => {
     if (isOpen) {
@@ -333,11 +399,11 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              stopAllTracks();
-              onCancel();
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCloseModal();
             }}
-            className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/70 transition cursor-pointer"
+            className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/70 active:scale-95 transition cursor-pointer"
             title="Close camera"
           >
             <X className="w-5 h-5" />

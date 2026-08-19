@@ -109,12 +109,9 @@ function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       const explicitAuth = localStorage.getItem('funshann_is_authenticated');
-      if (explicitAuth === 'false') {
-        return false;
-      }
-      return true;
+      return explicitAuth === 'true';
     } catch {
-      return true;
+      return false;
     }
   });
 
