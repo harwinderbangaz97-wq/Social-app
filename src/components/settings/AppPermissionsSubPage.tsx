@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Camera,
   Mic,
@@ -13,9 +13,11 @@ import {
   Shield,
   Info,
   RefreshCw,
+  X,
+  Lock,
 } from 'lucide-react';
-import { AppPermissionsState, AppPermissionType, AppPermissionStatus } from '../../types';
-import { APP_PERMISSIONS } from '../../services/permissionService';
+import { AppPermissionsState, AppPermissionType, AppPermissionStatus, PermissionDefinition } from '../../types';
+import { APP_PERMISSIONS, requestSystemPermission } from '../../services/permissionService';
 
 interface AppPermissionsSubPageProps {
   permissionsState: AppPermissionsState;
@@ -30,6 +32,8 @@ export const AppPermissionsSubPage: React.FC<AppPermissionsSubPageProps> = ({
   onOpenSystemSettings,
   onShowToast,
 }) => {
+  const [selectedRationalePerm, setSelectedRationalePerm] = useState<PermissionDefinition | null>(null);
+
   const getIcon = (id: string) => {
     switch (id) {
       case 'camera':
@@ -42,6 +46,7 @@ export const AppPermissionsSubPage: React.FC<AppPermissionsSubPageProps> = ({
         return Image;
       case 'contacts':
         return Users;
+      case 'notifications':
       default:
         return Bell;
     }
@@ -70,19 +75,38 @@ export const AppPermissionsSubPage: React.FC<AppPermissionsSubPageProps> = ({
       case 'prompt':
       default:
         return {
-          label: 'Ask Every Time',
+          label: 'Ask When Needed',
           color: 'bg-amber-50 text-amber-700 border-amber-200',
           icon: Info,
         };
     }
   };
 
-  const handleToggle = (permId: AppPermissionType) => {
-    const current = permissionsState[permId];
+  const handleToggle = async (permId: AppPermissionType) => {
+    const current = permissionsState[permId] || 'prompt';
+    if (current !== 'granted') {
+      // Show contextual rationale before granting
+      const def = APP_PERMISSIONS.find((p) => p.id === permId);
+      if (def) {
+        setSelectedRationalePerm(def);
+        return;
+      }
+    }
+
     const next: AppPermissionStatus = current === 'granted' ? 'denied' : 'granted';
     const updated = { ...permissionsState, [permId]: next };
     onUpdatePermissions(updated);
     onShowToast(`${permId.toUpperCase()} permission set to ${next === 'granted' ? 'Allowed' : 'Not Allowed'}`);
+  };
+
+  const handleConfirmRationale = async () => {
+    if (!selectedRationalePerm) return;
+    const permId = selectedRationalePerm.id;
+    const res = await requestSystemPermission(permId);
+    const updated = { ...permissionsState, [permId]: res };
+    onUpdatePermissions(updated);
+    setSelectedRationalePerm(null);
+    onShowToast(`${selectedRationalePerm.name} permission enabled.`);
   };
 
   return (
@@ -95,7 +119,7 @@ export const AppPermissionsSubPage: React.FC<AppPermissionsSubPageProps> = ({
           </div>
           <div>
             <h4 className="text-xs font-bold text-slate-800">Android System Permissions</h4>
-            <p className="text-[11px] text-slate-500">Manage fine-grained hardware & privacy access</p>
+            <p className="text-[11px] text-slate-500">Fine-grained on-demand hardware &amp; privacy controls</p>
           </div>
         </div>
 
@@ -138,11 +162,18 @@ export const AppPermissionsSubPage: React.FC<AppPermissionsSubPageProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-1 leading-snug">{perm.explanation}</p>
-                    <p className="text-[10px] text-slate-400 font-mono mt-1">{perm.androidManifestName}</p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRationalePerm(perm)}
+                      className="text-[10px] text-[#5B9DFF] hover:underline font-medium mt-1 inline-block"
+                    >
+                      Why is this needed?
+                    </button>
                   </div>
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => handleToggle(perm.id as AppPermissionType)}
                   className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0 cursor-pointer ${
                     isGranted ? 'bg-[#5B9DFF]' : 'bg-slate-300'
@@ -161,6 +192,62 @@ export const AppPermissionsSubPage: React.FC<AppPermissionsSubPageProps> = ({
           })}
         </div>
       </div>
+
+      {/* Contextual Rationale Modal */}
+      <AnimatePresence>
+        {selectedRationalePerm && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm bg-white neu-flat rounded-[28px] p-5 space-y-4 text-left border border-slate-100 shadow-2xl"
+            >
+              <div className="flex items-center justify-between">
+                <div className="w-10 h-10 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <button
+                  onClick={() => setSelectedRationalePerm(null)}
+                  className="w-8 h-8 rounded-full neu-raised flex items-center justify-center text-slate-400 hover:text-slate-700 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">{selectedRationalePerm.name} Access</h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {selectedRationalePerm.explanation}
+                </p>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-2xl text-[11px] text-slate-600 space-y-1.5 border border-slate-100">
+                <p>• <strong>Usage Rule:</strong> {selectedRationalePerm.detail}</p>
+                <p>• <strong>Standards:</strong> {selectedRationalePerm.modernApproach}</p>
+                <p>• <strong>Control:</strong> You can revoke this permission anytime in Settings.</p>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRationalePerm(null)}
+                  className="flex-1 h-10 rounded-xl neu-raised text-xs font-bold text-slate-600 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmRationale}
+                  className="flex-1 h-10 rounded-xl neu-active-blue text-white text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  Allow Access
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

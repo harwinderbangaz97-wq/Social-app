@@ -41,6 +41,7 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
   const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>(initialFacingMode);
   const [hasPermissionError, setHasPermissionError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isStreamReady, setIsStreamReady] = useState(false);
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [isCapturingFlash, setIsCapturingFlash] = useState(false);
 
@@ -58,11 +59,15 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
   const startCameraStream = useCallback(async (facing: 'user' | 'environment') => {
     setHasPermissionError(false);
     setErrorMessage('');
+    setIsStreamReady(false);
 
-    // Stop existing tracks
+    // Stop existing tracks cleanly to release previous camera hardware
     if (mediaStreamRef.current) {
       try {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+          track.enabled = false;
+        });
       } catch {}
       mediaStreamRef.current = null;
     }
@@ -89,7 +94,38 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
         lastError = err1;
       }
 
-      // Attempt 2: Fallback without audio constraint if audio failed during video mode
+      // Attempt 2: Exact facingMode constraint
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: facing,
+            },
+            audio: mode === 'video',
+          });
+        } catch (errExact) {
+          lastError = errExact;
+        }
+      }
+
+      // Attempt 3: If front/user camera requested but device lacks front camera, gracefully fallback to environment
+      if (!stream && facing === 'user') {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: 'environment' },
+            },
+            audio: mode === 'video',
+          });
+          if (stream) {
+            setCurrentFacingMode('environment');
+          }
+        } catch (errFallback) {
+          lastError = errFallback;
+        }
+      }
+
+      // Attempt 4: Fallback without audio constraint if audio failed during video mode
       if (!stream && mode === 'video') {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
@@ -103,7 +139,7 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
         }
       }
 
-      // Attempt 3: Standard generic video stream without facing constraint
+      // Attempt 5: Standard generic video stream without facing constraint
       if (!stream) {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
@@ -132,28 +168,36 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
         video.setAttribute('autoplay', 'true');
         video.setAttribute('muted', 'true');
 
-        const attemptPlay = async () => {
+        const markReadyAndPlay = async () => {
           try {
             if (video.paused) {
               await video.play();
             }
+            setIsStreamReady(true);
           } catch (playErr) {
             console.warn('Video play warning:', playErr);
           }
         };
 
+        video.onloadeddata = () => {
+          setIsStreamReady(true);
+        };
+        video.onplaying = () => {
+          setIsStreamReady(true);
+        };
         video.onloadedmetadata = () => {
-          attemptPlay();
+          markReadyAndPlay();
         };
         video.oncanplay = () => {
-          attemptPlay();
+          markReadyAndPlay();
         };
 
-        attemptPlay();
+        markReadyAndPlay();
       }
     } catch (err: any) {
       console.warn('getUserMedia error:', err);
       setHasPermissionError(true);
+      setIsStreamReady(false);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setErrorMessage('Camera access was blocked by your browser. Please allow camera permissions to take live photos or videos.');
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
@@ -177,36 +221,74 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
     }
     if (mediaStreamRef.current) {
       try {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+          track.enabled = false;
+        });
       } catch {}
       mediaStreamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setIsStreamReady(false);
   }, []);
 
-  const handleCloseModal = useCallback(() => {
-    try {
-      stopAllTracks();
-    } catch (err) {
-      console.error(err);
-    }
-    onCancel();
-  }, [onCancel, stopAllTracks]);
+  const handleCloseModal = useCallback(
+    (cleanHistory = true) => {
+      try {
+        stopAllTracks();
+      } catch (err) {
+        console.error('Error stopping tracks on modal close:', err);
+      }
+      if (cleanHistory && window.history.state?.funshannModal === 'camera') {
+        try {
+          window.history.back();
+        } catch {}
+      }
+      onCancel();
+    },
+    [onCancel, stopAllTracks]
+  );
 
-  // Listen for Escape key or Android gesture back when camera modal is active
+  // Hook Android system back button and browser history
   useEffect(() => {
+    if (!isOpen) return;
+
+    // Register global bridge for Android MainActivity.java onBackPressed
+    const previousHandler = (window as any).__funshannHandleBack;
+    (window as any).__funshannHandleBack = () => {
+      handleCloseModal(false);
+      return true;
+    };
+
+    // Push history entry so physical back button or browser back pops this modal cleanly
+    try {
+      window.history.pushState({ funshannModal: 'camera' }, '');
+    } catch {}
+
+    const handlePopState = (e: PopStateEvent) => {
+      handleCloseModal(false);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         e.preventDefault();
-        handleCloseModal();
+        handleCloseModal(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    return () => {
+      (window as any).__funshannHandleBack = previousHandler || null;
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen, handleCloseModal]);
 
+  // Handle open / close lifecycle and default to rear camera
   useEffect(() => {
     if (isOpen) {
       setCapturedPhotoUrl(null);
@@ -215,7 +297,9 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
       setCapturedVideoBlob(null);
       setIsRecording(false);
       setRecordingSeconds(0);
-      startCameraStream(currentFacingMode);
+      const defaultFacing = initialFacingMode || 'environment';
+      setCurrentFacingMode(defaultFacing);
+      startCameraStream(defaultFacing);
     } else {
       stopAllTracks();
     }
@@ -223,7 +307,30 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
     return () => {
       stopAllTracks();
     };
-  }, [isOpen, currentFacingMode, startCameraStream, stopAllTracks]);
+  }, [isOpen, initialFacingMode, startCameraStream, stopAllTracks]);
+
+  // Handle Android App Lifecycle (Pause / Resume / Backgrounding)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // App placed in background - stop camera tracks to release device hardware
+        stopAllTracks();
+      } else if (isOpen && !capturedPhotoUrl && !capturedVideoUrl) {
+        // App returned to foreground - smoothly restore live camera stream
+        startCameraStream(currentFacingMode);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', stopAllTracks);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', stopAllTracks);
+    };
+  }, [isOpen, capturedPhotoUrl, capturedVideoUrl, currentFacingMode, startCameraStream, stopAllTracks]);
 
   // Helper to convert data URL to File synchronously
   const dataURLtoFile = (dataurl: string, filename: string): File => {
@@ -247,6 +354,7 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
   const handleFlipCamera = () => {
     const nextFacing = currentFacingMode === 'user' ? 'environment' : 'user';
     setCurrentFacingMode(nextFacing);
+    startCameraStream(nextFacing);
   };
 
   // Take Snapshot Photo
@@ -450,6 +558,7 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
             }}
             className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/70 active:scale-95 transition cursor-pointer"
             title="Close camera"
+            aria-label="Close camera"
           >
             <X className="w-5 h-5" />
           </button>
@@ -458,7 +567,7 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
           </span>
         </div>
 
-        {/* Top Camera Actions (Flash & Flip) */}
+        {/* Top-Right Camera Actions (Flash & Flip) */}
         {!capturedPhotoUrl && !capturedVideoUrl && (
           <div className="flex items-center gap-2">
             {mode === 'photo' && (
@@ -469,19 +578,27 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
                   flashEnabled ? 'bg-amber-400 text-slate-900 shadow-lg' : 'bg-black/50 text-white hover:bg-black/70'
                 }`}
                 title={flashEnabled ? 'Flash On' : 'Flash Off'}
+                aria-label={flashEnabled ? 'Disable Flash' : 'Enable Flash'}
               >
                 {flashEnabled ? <Zap className="w-4 h-4 fill-slate-900" /> : <ZapOff className="w-4 h-4" />}
               </button>
             )}
 
-            <button
+            {/* Clearly Visible Top-Right Camera Flip Button */}
+            <motion.button
+              whileTap={{ scale: 0.9, rotate: 180 }}
+              transition={{ duration: 0.2 }}
               type="button"
               onClick={handleFlipCamera}
-              className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/70 transition cursor-pointer"
-              title="Flip camera (Front / Back)"
+              className="h-10 px-3 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center gap-1.5 hover:bg-black/80 border border-white/20 transition cursor-pointer shadow-lg active:scale-95"
+              title={`Switch to ${currentFacingMode === 'user' ? 'Rear (Back)' : 'Front (Selfie)'} Camera`}
+              aria-label="Flip Camera"
             >
-              <SwitchCamera className="w-4 h-4" />
-            </button>
+              <SwitchCamera className="w-4 h-4 text-[#5B9DFF]" />
+              <span className="text-[11px] font-bold tracking-tight">
+                {currentFacingMode === 'user' ? 'Front' : 'Rear'}
+              </span>
+            </motion.button>
           </div>
         )}
       </div>
@@ -537,7 +654,7 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
           </div>
         ) : (
           /* Live Viewfinder Video */
-          <div className="relative w-full h-full flex items-center justify-center">
+          <div className="relative w-full h-full flex items-center justify-center bg-black">
             <video
               ref={videoRef}
               autoPlay
@@ -546,6 +663,13 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
               controls={false}
               disablePictureInPicture
               disableRemotePlayback
+              style={{ backgroundColor: '#000000' }}
+              onLoadedData={() => {
+                setIsStreamReady(true);
+              }}
+              onPlaying={() => {
+                setIsStreamReady(true);
+              }}
               onLoadedMetadata={() => {
                 if (videoRef.current && videoRef.current.paused) {
                   videoRef.current.play().catch(() => {});
@@ -561,7 +685,9 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
                   videoRef.current.play().catch(() => {});
                 }
               }}
-              className={`w-full h-full object-cover ${currentFacingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+              className={`w-full h-full object-cover bg-black transition-opacity duration-150 ${
+                currentFacingMode === 'user' ? 'scale-x-[-1]' : ''
+              } ${isStreamReady ? 'opacity-100' : 'opacity-0'}`}
             />
 
             {/* Viewfinder Rule-of-Thirds Grid */}
@@ -615,7 +741,17 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
           </div>
         ) : mode === 'photo' ? (
           /* Photo Shutter Trigger */
-          <div className="w-full flex items-center justify-center relative">
+          <div className="w-full flex items-center justify-between px-2 relative">
+            <button
+              type="button"
+              onClick={handleFallbackFileClick}
+              className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md text-white flex flex-col items-center justify-center hover:bg-white/25 active:scale-95 transition cursor-pointer shadow-md"
+              title="Pick from gallery"
+              aria-label="Upload from files"
+            >
+              <Camera className="w-5 h-5 text-white/80" />
+            </button>
+
             <motion.button
               whileTap={{ scale: 0.9 }}
               type="button"
@@ -626,10 +762,24 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
             >
               <div className="w-full h-full rounded-full bg-white active:bg-slate-200 transition-colors shadow-inner" />
             </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.9, rotate: 180 }}
+              transition={{ duration: 0.2 }}
+              type="button"
+              onClick={handleFlipCamera}
+              className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md text-white flex flex-col items-center justify-center hover:bg-white/25 active:scale-95 transition cursor-pointer shadow-md"
+              title={`Switch to ${currentFacingMode === 'user' ? 'Rear' : 'Front'} Camera`}
+              aria-label="Flip Camera"
+            >
+              <SwitchCamera className="w-5 h-5 text-white" />
+            </motion.button>
           </div>
         ) : (
           /* Video Record Trigger */
-          <div className="w-full flex items-center justify-center relative">
+          <div className="w-full flex items-center justify-between px-2 relative">
+            <div className="w-12 h-12" />
+
             {isRecording ? (
               <motion.button
                 whileTap={{ scale: 0.9 }}
@@ -651,6 +801,22 @@ export const DeviceCameraModal: React.FC<DeviceCameraModalProps> = ({
               >
                 <div className="w-full h-full rounded-full bg-rose-600 active:bg-rose-700 transition-colors shadow-inner" />
               </motion.button>
+            )}
+
+            {!isRecording ? (
+              <motion.button
+                whileTap={{ scale: 0.9, rotate: 180 }}
+                transition={{ duration: 0.2 }}
+                type="button"
+                onClick={handleFlipCamera}
+                className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md text-white flex flex-col items-center justify-center hover:bg-white/25 active:scale-95 transition cursor-pointer shadow-md"
+                title={`Switch to ${currentFacingMode === 'user' ? 'Rear' : 'Front'} Camera`}
+                aria-label="Flip Camera"
+              >
+                <SwitchCamera className="w-5 h-5 text-white" />
+              </motion.button>
+            ) : (
+              <div className="w-12 h-12" />
             )}
           </div>
         )}

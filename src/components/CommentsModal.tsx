@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, Send, Heart, CheckCircle2 } from 'lucide-react';
+import { X, Send, Heart, CheckCircle2, MoreHorizontal, Flag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Post, User } from '../types';
+import { Post, User, Comment } from '../types';
+import { UniversalReportModal } from './UniversalReportModal';
 
 interface CommentsModalProps {
   post: Post | null;
@@ -10,6 +11,7 @@ interface CommentsModalProps {
   onClose: () => void;
   onAddComment: (postId: string, text: string) => void;
   onUserClick?: (user: User) => void;
+  onShowToast?: (msg: string) => void;
 }
 
 export const CommentsModal: React.FC<CommentsModalProps> = ({
@@ -19,9 +21,12 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
   onClose,
   onAddComment,
   onUserClick,
+  onShowToast,
 }) => {
   const [commentText, setCommentText] = useState('');
   const [likedComments, setLikedComments] = useState<Record<string, boolean>>({});
+  const [selectedCommentForReport, setSelectedCommentForReport] = useState<Comment | null>(null);
+  const [openCommentMenuId, setOpenCommentMenuId] = useState<string | null>(null);
 
   if (!isOpen || !post) return null;
 
@@ -144,28 +149,73 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      aria-label="Like comment"
-                      onClick={() => handleToggleCommentLike(comment.id)}
-                      className="flex flex-col items-center text-slate-400 hover:text-rose-500 pt-1 transition"
-                    >
-                      <Heart
-                        className={`w-4 h-4 ${
-                          isCommentLiked ? 'fill-rose-500 text-rose-500' : ''
-                        }`}
-                      />
-                      {(comment.likesCount > 0 || isCommentLiked) && (
-                        <span className="text-[10px] font-bold mt-0.5 text-slate-500">
-                          {comment.likesCount + (isCommentLiked && !comment.isLiked ? 1 : 0)}
-                        </span>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        aria-label="Like comment"
+                        onClick={() => handleToggleCommentLike(comment.id)}
+                        className="flex flex-col items-center text-slate-400 hover:text-rose-500 pt-1 transition"
+                      >
+                        <Heart
+                          className={`w-4 h-4 ${
+                            isCommentLiked ? 'fill-rose-500 text-rose-500' : ''
+                          }`}
+                        />
+                        {(comment.likesCount > 0 || isCommentLiked) && (
+                          <span className="text-[10px] font-bold mt-0.5 text-slate-500">
+                            {comment.likesCount + (isCommentLiked && !comment.isLiked ? 1 : 0)}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Comment Options Dropdown Trigger */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setOpenCommentMenuId(openCommentMenuId === comment.id ? null : comment.id)}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                          aria-label="Comment options"
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5 pointer-events-none" />
+                        </button>
+
+                        {openCommentMenuId === comment.id && (
+                          <div className="absolute right-0 top-8 z-30 w-36 bg-white rounded-2xl p-1.5 shadow-xl border border-slate-200/80">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenCommentMenuId(null);
+                                setSelectedCommentForReport(comment);
+                              }}
+                              className="w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition cursor-pointer"
+                            >
+                              <Flag className="w-3.5 h-3.5 text-rose-500" />
+                              <span>Report</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 );
               })
             )}
           </div>
+
+          {/* Universal Report Modal for Comments */}
+          {selectedCommentForReport && (
+            <UniversalReportModal
+              isOpen={Boolean(selectedCommentForReport)}
+              contentType="comment"
+              contentId={selectedCommentForReport.id}
+              targetUser={selectedCommentForReport.user}
+              reporterUserId={currentUser.id}
+              snippet={selectedCommentForReport.text}
+              postId={post.id}
+              onClose={() => setSelectedCommentForReport(null)}
+              onShowToast={onShowToast}
+            />
+          )}
 
           {/* Slightly Larger, Clean Comments Input Field (Requirement 1) */}
           <form

@@ -1081,6 +1081,7 @@ function AppContent() {
             onClose={closeComments}
             onAddComment={handleAddComment}
             onUserClick={handleOpenProfile}
+            onShowToast={showToast}
           />
 
           {/* Share Sheet Modal */}

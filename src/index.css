@@ -27,6 +27,23 @@
 }
 
 /* =========================================================================
+   ANDROID WEBVIEW / CHROMIUM VIDEO PLACEHOLDER SUPPRESSION
+   ========================================================================= */
+video::-webkit-media-controls {
+  display: none !important;
+}
+
+video::-webkit-media-controls-start-playback-button,
+video::-webkit-media-controls-play-button,
+video::-webkit-media-controls-overlay-play-button,
+video::-webkit-media-controls-enclosure {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* =========================================================================
    LIGHT THEME (Porcelain Pure)
    ========================================================================= */
 .neu-flat {

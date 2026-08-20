@@ -17,6 +17,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { User, ThemeMode } from '../types';
+import { LegalDocumentsSubPage } from './settings/LegalDocumentsSubPage';
 
 interface WelcomeAuthScreenProps {
   onAuthenticate: (user: Partial<User>) => void;
@@ -754,25 +755,17 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                 </button>
               </div>
 
-              <div className="text-xs text-slate-600 space-y-2.5 leading-relaxed">
-                <p>
-                  Welcome to <strong>Funshann</strong>. By accessing or using our application, you agree to connect respectfully with our community.
-                </p>
-                <p>
-                  <strong>Content & Ownership:</strong> You retain ownership of any media, stories, and messages you create and share on Funshann.
-                </p>
-                <p>
-                  <strong>Data Protection & Encryption:</strong> All communications, voice notes, and private messages are encrypted and safeguarded.
-                </p>
-                <p>
-                  <strong>Safety First:</strong> We maintain zero tolerance for harassment, hate speech, or malicious activities.
-                </p>
+              <div className="py-2">
+                <LegalDocumentsSubPage
+                  documentType={activeLegalModal === 'terms' ? 'terms_of_service' : 'privacy_policy'}
+                  onShowToast={() => {}}
+                />
               </div>
 
               <button
                 type="button"
                 onClick={() => setActiveLegalModal(null)}
-                className="w-full h-11 mt-4 bg-[#2563EB] text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/20 active:scale-95 transition-transform"
+                className="w-full h-11 mt-3 bg-[#2563EB] text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/20 active:scale-95 transition-transform cursor-pointer"
               >
                 I Understand
               </button>

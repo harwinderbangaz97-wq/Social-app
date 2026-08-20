@@ -172,7 +172,8 @@ export type TabType = 'home' | 'search' | 'upload' | 'chat' | 'profile';
 
 export type SettingsSection =
   | 'main'
-  // Account Settings
+  // Account & Security
+  | 'account_security'
   | 'username'
   | 'mobile'
   | 'email'
@@ -199,15 +200,22 @@ export type SettingsSection =
   // Messages & Media
   | 'media'
   | 'clear_conversation'
-  // Safety & Support & Legal
+  // Safety & Support
   | 'security'
   | 'safety_centre'
   | 'help_centre'
   | 'bugs_suggestions'
+  | 'grievance'
+  // Legal Documents
   | 'about'
   | 'more_info'
   | 'privacy_policy'
   | 'terms_of_service'
+  | 'community_guidelines'
+  | 'copyright_ip'
+  | 'child_safety'
+  | 'disclaimer'
+  | 'app_disclaimer'
   | 'other_legal';
 
 export interface PublicProfileSettings {
@@ -273,14 +281,14 @@ export interface BugReportItem {
 
 export type ThemeMode = 'light' | 'dark' | 'golden';
 
-export type AppPermissionType = 'camera' | 'microphone' | 'location' | 'photos' | 'contacts';
+export type AppPermissionType = 'camera' | 'microphone' | 'location' | 'photos' | 'contacts' | 'notifications';
 export type AppPermissionStatus = 'granted' | 'denied' | 'prompt' | 'limited';
 
 export interface PermissionDefinition {
   id: AppPermissionType;
   name: string;
   shortName: string;
-  iconName: 'Camera' | 'Mic' | 'MapPin' | 'Image' | 'Users';
+  iconName: 'Camera' | 'Mic' | 'MapPin' | 'Image' | 'Users' | 'Bell';
   explanation: string;
   detail: string;
   androidManifestName: string;
@@ -294,6 +302,7 @@ export interface AppPermissionsState {
   location: AppPermissionStatus;
   photos: AppPermissionStatus;
   contacts: AppPermissionStatus;
+  notifications?: AppPermissionStatus;
 }
 
 export interface CustomThemeConfig {

@@ -29,9 +29,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { User, ChatThread, Message, VoiceNoteData, MessagePrivacyMode, MessageReportReason } from '../types';
 import { VoiceMessageBubble } from './VoiceMessageBubble';
 import { ChatWallpaperModal, ChatWallpaperSettings } from './ChatWallpaperModal';
-import { ReportMessageModal } from './ReportMessageModal';
 import { DeleteMessageConfirmModal } from './DeleteMessageConfirmModal';
 import { IndividualUserMenu } from './IndividualUserMenu';
+import { UniversalReportModal } from './UniversalReportModal';
 import { CHAT_WALLPAPERS } from '../data/wallpapers';
 import { useNavigation } from '../context/NavigationContext';
 import { usePermissionAndMedia } from '../context/PermissionAndMediaContext';
@@ -1077,20 +1077,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
           onConfirmDelete={handleConfirmPermanentDelete}
         />
 
-        {/* Report Message Modal */}
-        <ReportMessageModal
-          isOpen={reportTargetMessage !== null}
-          message={reportTargetMessage}
-          participant={activeThread.participant}
-          onClose={() => setReportTargetMessage(null)}
-          onSubmitReport={(reason, details) => {
-            if (reportTargetMessage && onReportMessage) {
-              onReportMessage(activeThread.id, reportTargetMessage, reason, details);
-            } else if (onShowToast) {
-              onShowToast('Report submitted confidentially. Thank you.');
-            }
-          }}
-        />
+        {/* Universal Report Message Modal */}
+        {reportTargetMessage && (
+          <UniversalReportModal
+            isOpen={Boolean(reportTargetMessage)}
+            contentType="message"
+            contentId={reportTargetMessage.id}
+            targetUser={activeThread.participant}
+            reporterUserId={currentUser.id}
+            snippet={reportTargetMessage.text || (reportTargetMessage.imageUrl ? 'Photo attachment' : 'Voice note')}
+            mediaUrl={reportTargetMessage.imageUrl}
+            onClose={() => setReportTargetMessage(null)}
+            onShowToast={onShowToast}
+          />
+        )}
 
         {/* Image Lightbox */}
         <AnimatePresence>

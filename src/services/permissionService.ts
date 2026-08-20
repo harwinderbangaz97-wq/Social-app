@@ -56,6 +56,17 @@ export const PERMISSION_DEFINITIONS: Record<AppPermissionType, PermissionDefinit
     isEssential: false,
     modernApproach: 'Cryptographic client-side lookup with explicit user opt-in.',
   },
+  notifications: {
+    id: 'notifications',
+    name: 'Push Notifications',
+    shortName: 'Notifications',
+    iconName: 'Bell',
+    explanation: 'Notifications alert you when you receive direct messages, mentions, or security alerts.',
+    detail: 'Only sent when new incoming activities occur. Configurable anytime in Settings.',
+    androidManifestName: 'android.permission.POST_NOTIFICATIONS',
+    isEssential: false,
+    modernApproach: 'Android 13+ runtime POST_NOTIFICATIONS consent.',
+  },
 };
 
 export const PERMISSION_ORDER: AppPermissionType[] = [
@@ -63,6 +74,7 @@ export const PERMISSION_ORDER: AppPermissionType[] = [
   'microphone',
   'location',
   'photos',
+  'notifications',
   'contacts',
 ];
 
@@ -197,6 +209,18 @@ export async function requestSystemPermission(
       }
       return 'granted';
     }
+
+    if (type === 'notifications') {
+      if (typeof Notification !== 'undefined' && Notification.requestPermission) {
+        try {
+          const perm = await Notification.requestPermission();
+          return perm === 'granted' ? 'granted' : 'denied';
+        } catch {
+          return 'granted';
+        }
+      }
+      return 'granted';
+    }
   } catch (e) {
     console.warn(`Permission request exception for ${type}:`, e);
   }
@@ -222,6 +246,10 @@ export async function queryPermissionStatus(
       }
       if (type === 'location') {
         const res = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+        return res.state as AppPermissionStatus;
+      }
+      if (type === 'notifications') {
+        const res = await navigator.permissions.query({ name: 'notifications' as PermissionName });
         return res.state as AppPermissionStatus;
       }
     }

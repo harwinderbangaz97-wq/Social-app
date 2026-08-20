@@ -11,8 +11,13 @@ import {
   HelpCircle,
   Clock,
   ArrowRight,
+  Globe,
+  FileText,
 } from 'lucide-react';
 import { User } from '../../types';
+import { initiateAccountDeletion } from '../../services/accountDeletionService';
+import { ExternalWebAccountDeletionModal } from '../ExternalWebAccountDeletionModal';
+import { LEGAL_CONFIG } from '../../data/legalConstants';
 
 interface DeleteAccountSubPageProps {
   currentUser: User;
@@ -43,6 +48,7 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
   const [otpSent, setOtpSent] = useState(false);
   const [resendTimer, setResendTimer] = useState<number>(0);
   const [confirmPhrase, setConfirmPhrase] = useState<string>('');
+  const [showWebPortalModal, setShowWebPortalModal] = useState(false);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -78,7 +84,6 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
       onShowToast('Please enter the complete 6-digit verification code.');
       return;
     }
-    // Verified successfully -> move to final double-confirmation
     onShowToast('Identity verified successfully.');
     setStep('final_confirm');
   };
@@ -89,6 +94,8 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
       return;
     }
 
+    // Execute actual account deletion service logic
+    initiateAccountDeletion(currentUser, selectedReason, customFeedback, 'in_app');
     onConfirmDelete(selectedReason, customFeedback);
   };
 
@@ -102,8 +109,7 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
         <div>
           <h4 className="text-xs font-bold text-red-900">Permanent Account Deletion</h4>
           <p className="text-[11px] text-red-700/90 leading-relaxed mt-0.5">
-            This action is irreversible. All your posts, stories, followers, direct messages, and saved
-            media will be permanently removed from Funshann.
+            Deletion initiates account deactivation and schedules all user-generated content for permanent erasure according to our data retention policy.
           </p>
         </div>
       </div>
@@ -122,6 +128,7 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
               {DELETION_REASONS.map((reason) => (
                 <button
                   key={reason}
+                  type="button"
                   onClick={() => setSelectedReason(reason)}
                   className={`w-full p-3 rounded-2xl text-left text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
                     selectedReason === reason
@@ -151,14 +158,34 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
             )}
           </div>
 
+          {/* Google Play External Web Portal Link */}
+          <div className="neu-flat rounded-[24px] p-3.5 flex items-center justify-between bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-2.5">
+              <Globe className="w-4 h-4 text-[#5B9DFF]" />
+              <div>
+                <p className="text-xs font-bold text-slate-800">External Web Deletion Portal</p>
+                <p className="text-[10px] text-slate-500">Google Play web deletion mechanism</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowWebPortalModal(true)}
+              className="text-xs font-bold text-[#5B9DFF] hover:underline"
+            >
+              Open Web Portal
+            </button>
+          </div>
+
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={onCancel}
               className="flex-1 h-11 rounded-2xl neu-raised text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => {
                 if (!selectedReason) {
                   onShowToast('Please select a reason before proceeding.');
@@ -188,45 +215,56 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
                 <p>
-                  <strong>Profile & Handle:</strong> @{currentUser.username} will be released and your profile removed.
+                  <strong>Profile & Username:</strong> @{currentUser.username} will be released and your profile removed.
                 </p>
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
                 <p>
-                  <strong>Content & Media:</strong> All {currentUser.postsCount || 18} posts, stories, and saved bookmarks will be deleted.
+                  <strong>User-Generated Content:</strong> All {currentUser.postsCount || 18} posts, stories, comments, and saved bookmarks will be deleted.
                 </p>
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
                 <p>
-                  <strong>Direct Conversations:</strong> Message histories will be securely purged from servers.
+                  <strong>Direct Conversations:</strong> Message histories and voice recordings will be securely purged from servers.
                 </p>
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
                 <p>
-                  <strong>Social Graph:</strong> Followers and following connections will be disconnected.
+                  <strong>Personal Data:</strong> Email, phone, birthday, and location metadata removed.
                 </p>
               </div>
             </div>
 
-            <div className="p-3 neu-inset rounded-2xl bg-amber-50/60 border border-amber-200/60 text-[11px] text-amber-900 flex items-start gap-2">
-              <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <span>
-                <strong>30-Day Deactivation Grace Period:</strong> You can cancel deletion by logging back in within 30 days. After 30 days, purge is permanent.
-              </span>
+            {/* Retention & Grace Period Disclosures */}
+            <div className="p-3.5 neu-inset rounded-2xl bg-amber-50/70 border border-amber-200/70 text-[11px] text-amber-900 space-y-1.5">
+              <div className="flex items-start gap-2">
+                <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p>
+                  <strong>30-Day Delayed Deletion Grace Period:</strong> Your account is immediately deactivated and hidden from public view. You may cancel deletion by logging back in within 30 days. After 30 days, purge is irreversible.
+                </p>
+              </div>
+              <div className="flex items-start gap-2 pt-1 border-t border-amber-200/60">
+                <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p>
+                  <strong>Legitimate Legal & Security Retention:</strong> In compliance with statutory regulations, we retain only strictly necessary financial/tax transaction records and security audit logs for mandated retention periods.
+                </p>
+              </div>
             </div>
           </div>
 
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setStep('reason')}
               className="flex-1 h-11 rounded-2xl neu-raised text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
             >
               Back
             </button>
             <button
+              type="button"
               onClick={handleSendOtp}
               className="flex-1 h-11 rounded-2xl bg-red-500 hover:bg-red-600 text-xs font-bold text-white shadow-xs cursor-pointer"
             >
@@ -274,6 +312,7 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
                 <span className="text-slate-400 text-[11px]">Resend in {resendTimer}s</span>
               ) : (
                 <button
+                  type="button"
                   onClick={handleSendOtp}
                   className="text-xs font-bold text-[#5B9DFF] hover:underline"
                 >
@@ -285,12 +324,14 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
 
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setStep('warning')}
               className="flex-1 h-11 rounded-2xl neu-raised text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
             >
               Back
             </button>
             <button
+              type="button"
               onClick={handleVerifyOtp}
               className="flex-1 h-11 rounded-2xl neu-active-blue text-xs font-bold text-white shadow-xs cursor-pointer"
             >
@@ -325,12 +366,14 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
 
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={onCancel}
               className="flex-1 h-12 rounded-2xl neu-raised text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
             >
               Cancel & Keep Account
             </button>
             <button
+              type="button"
               onClick={handleExecuteDeletion}
               disabled={confirmPhrase.trim().toUpperCase() !== 'DELETE'}
               className={`flex-1 h-12 rounded-2xl text-xs font-bold text-white transition-all ${
@@ -344,6 +387,14 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
           </div>
         </div>
       )}
+
+      {/* External Web Portal Modal */}
+      <ExternalWebAccountDeletionModal
+        isOpen={showWebPortalModal}
+        onClose={() => setShowWebPortalModal(false)}
+        currentUser={currentUser}
+        onShowToast={onShowToast}
+      />
     </div>
   );
 };

@@ -663,10 +663,23 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
+        if (webView != null) {
+            webView.evaluateJavascript(
+                "(function(){ try { if (window.__funshannHandleBack && typeof window.__funshannHandleBack === 'function') { return window.__funshannHandleBack(); } } catch(e){} return false; })()",
+                value -> {
+                    if ("true".equals(value)) {
+                        // Handled natively by active camera modal / in-app view
+                        return;
+                    }
+                    if (webView.canGoBack()) {
+                        webView.goBack();
+                    } else {
+                        MainActivity.super.onBackPressed();
+                    }
+                }
+            );
+            return;
         }
+        super.onBackPressed();
     }
 }

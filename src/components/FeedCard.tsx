@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, User } from '../types';
+import { UniversalReportModal } from './UniversalReportModal';
 
 interface FeedCardProps {
   post: Post;
@@ -803,59 +804,19 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Report Modal Dialog */}
-      <AnimatePresence>
-        {showReportDialog && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
-              className="w-full max-w-xs bg-white rounded-[26px] p-5 neu-flat text-left space-y-3 shadow-2xl border border-slate-100"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-rose-500">
-                  <AlertTriangle className="w-4 h-4" />
-                  <h4 className="text-sm font-bold text-slate-800">Report Post</h4>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowReportDialog(false)}
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                Why are you reporting this post from @{post.user.username}?
-              </p>
-
-              <div className="space-y-1.5 pt-1">
-                {[
-                  'Spam or misleading',
-                  'Inappropriate content',
-                  'Harassment or hate speech',
-                  'Intellectual property violation',
-                  'Other reason',
-                ].map((reason) => (
-                  <button
-                    key={reason}
-                    type="button"
-                    onClick={() => handleReport(reason)}
-                    className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 rounded-xl hover:bg-rose-50 hover:text-rose-600 transition"
-                  >
-                    {reason}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Universal 13-Reason Report Modal Dialog */}
+      <UniversalReportModal
+        isOpen={showReportDialog}
+        contentType="post"
+        contentId={post.id}
+        targetUser={post.user}
+        reporterUserId={currentUser.id}
+        snippet={post.caption}
+        mediaUrl={post.imageUrl}
+        postId={post.id}
+        onClose={() => setShowReportDialog(false)}
+        onShowToast={onShowToast}
+      />
     </motion.article>
   );
 };

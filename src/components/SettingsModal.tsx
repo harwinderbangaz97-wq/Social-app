@@ -44,6 +44,10 @@ import {
   Scale,
   Search,
   Activity,
+  Baby,
+  Copyright,
+  UserCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   User,
@@ -68,6 +72,8 @@ import {
   PasswordSubPage,
   TwoFactorSubPage,
 } from './settings/AccountSettingsSubPages';
+import { AccountSecurityHubSubPage } from './settings/AccountSecurityHubSubPage';
+import { GrievanceSubPage } from './settings/GrievanceSubPage';
 import { NotificationsSubPage } from './settings/NotificationsSubPage';
 import { LanguageSubPage } from './settings/LanguageSubPage';
 import { AppAppearanceSubPage } from './settings/AppAppearanceSubPage';
@@ -83,7 +89,7 @@ import { BlockedListSubPage } from './settings/BlockedListSubPage';
 import { WhoCanContactSubPage } from './settings/WhoCanContactSubPage';
 import { ClearConversationsSubPage } from './settings/ClearConversationsSubPage';
 import { AccountRecoverySubPage } from './settings/AccountRecoverySubPage';
-import { SafetyCentreSubPage } from './settings/SafetyCentreSubPage';
+import { SafetyCenterSubPage } from './settings/SafetyCenterSubPage';
 import { HelpCentreSubPage } from './settings/HelpCentreSubPage';
 import { BugsAndSuggestionsSubPage } from './settings/BugsAndSuggestionsSubPage';
 import { LegalDocumentsSubPage } from './settings/LegalDocumentsSubPage';
@@ -137,7 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdatePermissions,
   onRerunPermissionOnboarding,
 }) => {
-  const { navState, setSettingsSection, goBack, closeSettings } = useNavigation();
+  const { navState, setSettingsSection, goBack, closeSettings, setIsEditProfileOpen } = useNavigation();
   const currentSection: SettingsSection = (navState.settingsSection || initialSection || 'main') as SettingsSection;
   const setCurrentSection = (sec: SettingsSection) => setSettingsSection(sec);
 
@@ -252,6 +258,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     switch (sec) {
       case 'main':
         return { title: 'Settings', subtitle: `@${currentUser.username}` };
+      case 'account_security':
+        return { title: 'Account & Security', subtitle: 'Credentials & Protection' };
       case 'username':
         return { title: 'Change Username', subtitle: '90-Day Policy' };
       case 'mobile':
@@ -301,14 +309,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       case 'help_centre':
         return { title: 'Help Centre', subtitle: 'Guides & Support Ticket' };
       case 'bugs_suggestions':
-        return { title: 'Bugs & Suggestions', subtitle: 'Feedback & Issue Reports' };
+        return { title: 'Report a Problem', subtitle: 'Feedback & Issue Reports' };
+      case 'grievance':
+        return { title: 'Grievance / Complaints', subtitle: 'Statutory Redressal Officer' };
       case 'more_info':
       case 'about':
-        return { title: 'More Info', subtitle: 'App Specifications' };
+        return { title: 'About Funshann', subtitle: 'App Specifications & Build' };
       case 'privacy_policy':
         return { title: 'Privacy Policy', subtitle: 'Data Protections' };
       case 'terms_of_service':
-        return { title: 'Terms of Service', subtitle: 'User Agreement' };
+        return { title: 'Terms & Conditions', subtitle: 'User Agreement & Guidelines' };
+      case 'community_guidelines':
+        return { title: 'Community Guidelines', subtitle: 'Safety & Respect Standards' };
+      case 'copyright_ip':
+        return { title: 'Copyright & Intellectual Property', subtitle: 'DMCA & Content Rights' };
+      case 'child_safety':
+        return { title: 'Child Safety & Age Policy', subtitle: 'Protection of Minors' };
+      case 'disclaimer':
+      case 'app_disclaimer':
+        return { title: 'App Disclaimer', subtitle: 'Service Limitations & Terms' };
       case 'other_legal':
         return { title: 'Other Legal Notices', subtitle: 'Open Source Licenses' };
       default:
@@ -391,346 +410,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* ------------------------------------------------------------- */}
-              {/* CATEGORY 1: ACCOUNT SETTINGS */}
+              {/* CATEGORY 1: ACCOUNT */}
               {/* ------------------------------------------------------------- */}
               <div className="space-y-2">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                  Account Settings
+                  Account
                 </span>
 
                 <div className="neu-flat rounded-[22px] overflow-hidden divide-y divide-slate-100/80">
-                  {/* 1. Name */}
-                  <div className="px-4 py-3.5 hover:bg-slate-50/40 transition-colors">
-                    {!isEditingName ? (
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
-                            <UserIcon className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-bold text-slate-800">Name</p>
-                              <span className="text-[9px] text-slate-400 font-medium">
-                                (Change anytime)
-                              </span>
-                            </div>
-                            <p className="text-[11px] font-medium text-slate-600">
-                              {currentUser.name}
-                            </p>
-                          </div>
-                        </div>
-
-                        <motion.button
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => {
-                            setTempName(currentUser.name);
-                            setIsEditingName(true);
-                          }}
-                          className="px-2.5 py-1 rounded-full neu-raised text-[10px] font-bold text-[#5B9DFF] hover:text-blue-700 flex items-center gap-1 cursor-pointer"
-                        >
-                          <Edit3 className="w-3 h-3" />
-                          <span>Edit</span>
-                        </motion.button>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-slate-800">Change Your Name</span>
-                          <span className="text-[10px] text-emerald-600 font-bold">No restriction</span>
-                        </div>
-                        <input
-                          type="text"
-                          autoFocus
-                          value={tempName}
-                          onChange={(e) => setTempName(e.target.value)}
-                          placeholder="Enter your name"
-                          className="w-full h-10 px-3 rounded-xl neu-inset bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]"
-                        />
-                        <div className="flex gap-2 justify-end pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTempName(currentUser.name);
-                              setIsEditingName(false);
-                            }}
-                            className="px-3 py-1.5 rounded-xl neu-raised text-xs font-semibold text-slate-500 hover:text-slate-700"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleSaveName}
-                            className="px-4 py-1.5 rounded-xl neu-active-blue text-xs font-bold text-white shadow-xs"
-                          >
-                            Save Name
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 2. Username > */}
+                  {/* Account & Security */}
                   <button
-                    onClick={() => setCurrentSection('username')}
+                    onClick={() => setCurrentSection('account_security')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
-                        <UserIcon className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-bold text-slate-800">Username</p>
-                          <span className="text-[9px] text-amber-600 bg-amber-50 font-bold px-1.5 py-0.2 rounded-full border border-amber-200">
-                            90-Day Rule
-                          </span>
-                        </div>
-                        <p className="text-[11px] font-bold text-[#5B9DFF]">
-                          @{currentUser.username}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 3. Birthday */}
-                  <div className="px-4 py-3.5 hover:bg-slate-50/40 transition-colors">
-                    {!isEditingBirthday ? (
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-pink-500">
-                            <Cake className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-slate-800">Birthday</p>
-                            <p className="text-[11px] text-slate-600">
-                              {formatBirthday(currentUser.birthday)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <motion.button
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => setIsEditingBirthday(true)}
-                          className="px-2.5 py-1 rounded-full neu-raised text-[10px] font-bold text-[#5B9DFF] hover:text-blue-700 flex items-center gap-1 cursor-pointer"
-                        >
-                          <Calendar className="w-3 h-3" />
-                          <span>Edit</span>
-                        </motion.button>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <span className="text-xs font-bold text-slate-800 block">Select Birthday</span>
-                        <input
-                          type="date"
-                          value={tempBirthday}
-                          onChange={(e) => setTempBirthday(e.target.value)}
-                          className="w-full h-10 px-3 rounded-xl neu-inset bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]"
-                        />
-                        <div className="flex gap-2 justify-end pt-1">
-                          <button
-                            type="button"
-                            onClick={() => setIsEditingBirthday(false)}
-                            className="px-3 py-1.5 rounded-xl neu-raised text-xs font-semibold text-slate-500 hover:text-slate-700"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleSaveBirthday}
-                            className="px-4 py-1.5 rounded-xl neu-active-blue text-xs font-bold text-white shadow-xs"
-                          >
-                            Save Birthday
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 4. Mobile Number > */}
-                  <button
-                    onClick={() => setCurrentSection('mobile')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-emerald-500">
-                        <Phone className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-slate-800">Mobile Number</p>
-                          <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700">
-                            OTP Verified
-                          </span>
-                        </div>
-                        <p className="text-[11px] font-mono text-slate-500">
-                          {maskMobile(currentUser.mobileNumber)}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 5. Email > */}
-                  <button
-                    onClick={() => setCurrentSection('email')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-violet-500">
-                        <Mail className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-slate-800">Email</p>
-                          <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-full bg-violet-50 text-violet-700">
-                            Confirmed
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500">
-                          {maskEmail(currentUser.email)}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 6. Password > */}
-                  <button
-                    onClick={() => setCurrentSection('password')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-amber-500">
-                        <Lock className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Password</p>
-                        <p className="text-[11px] font-mono text-slate-400">••••••••••••</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 7. Two-Factor Authentication > */}
-                  <button
-                    onClick={() => setCurrentSection('two_factor')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-9 h-9 rounded-full neu-raised flex items-center justify-center ${
-                          currentUser.twoFactorEnabled ? 'text-emerald-500' : 'text-slate-400'
-                        }`}
-                      >
                         <ShieldCheck className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-slate-800">Two-Factor Authentication</p>
-                          <span
-                            className={`text-[9px] font-extrabold uppercase px-2 py-0.2 rounded-full ${
-                              currentUser.twoFactorEnabled
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-slate-200 text-slate-600'
-                            }`}
-                          >
-                            {currentUser.twoFactorEnabled ? 'ON' : 'OFF'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500">
-                          {currentUser.twoFactorEnabled ? 'Authenticator App Active' : 'Standard sign-in protection'}
-                        </p>
+                        <p className="text-xs font-bold text-slate-800">Account &amp; Security</p>
+                        <p className="text-[11px] text-slate-500">Username, password, 2FA &amp; recovery</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </button>
 
-                  {/* 8. Saved Login > */}
+                  {/* Edit Profile */}
                   <button
-                    onClick={() => setCurrentSection('saved_login')}
+                    onClick={() => {
+                      closeSettings();
+                      setIsEditProfileOpen(true);
+                    }}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-blue-500">
-                        <KeyRound className="w-4 h-4" />
+                        <Edit3 className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800">Saved Login</p>
-                        <p className="text-[11px] text-slate-500">Save login sessions on this device</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 9. My Reports > */}
-                  <button
-                    onClick={() => setCurrentSection('my_reports')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-amber-500">
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">My Reports</p>
-                        <p className="text-[11px] text-slate-500">Submitted infractions & statuses</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 10. Account Status > */}
-                  <button
-                    onClick={() => setCurrentSection('account_status')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-emerald-500">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-slate-800">Account Status</p>
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700">
-                            Good Standing
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500">Zero violations on record</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 11. Delete Account > */}
-                  <button
-                    onClick={() => setCurrentSection('delete_account')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-red-50/40 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-red-500">
-                        <Trash2 className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-red-600">Delete Account</p>
-                        <p className="text-[11px] text-slate-400">Permanently remove account & media</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 12. I've Lost My Account > */}
-                  <button
-                    onClick={() => setCurrentSection('account_recovery')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
-                        <LifeBuoy className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">I've Lost My Account</p>
-                        <p className="text-[11px] text-slate-500">Account recovery assistance & OTP</p>
+                        <p className="text-xs font-bold text-slate-800">Edit Profile</p>
+                        <p className="text-[11px] text-slate-500">Bio, profile photo &amp; personal details</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -739,255 +458,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* ------------------------------------------------------------- */}
-              {/* CATEGORY 2: APP SETTINGS */}
+              {/* CATEGORY 2: PRIVACY & SAFETY */}
               {/* ------------------------------------------------------------- */}
               <div className="space-y-2">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                  App Settings
+                  Privacy &amp; Safety
                 </span>
 
                 <div className="neu-flat rounded-[22px] overflow-hidden divide-y divide-slate-100/80">
-                  {/* App Appearance > */}
-                  <button
-                    onClick={() => setCurrentSection('appearance')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
-                        <Palette className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">App Appearance</p>
-                        <p className="text-[11px] text-slate-500 capitalize">
-                          Current: {theme} Theme • Custom Studio
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* App Permissions > */}
-                  <button
-                    onClick={() => setCurrentSection('permissions')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-slate-800">App Permissions</p>
-                          <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-full bg-blue-100 text-[#5B9DFF]">
-                            Android
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500">
-                          Camera, Mic, Location, Photos & Contacts
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* Contact Syncing > */}
-                  <button
-                    onClick={() => setCurrentSection('contact_sync')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-purple-500">
-                        <Users className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Contact Syncing</p>
-                        <p className="text-[11px] text-slate-500">Find creators & friends from phone contacts</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-                </div>
-              </div>
-
-              {/* ------------------------------------------------------------- */}
-              {/* CATEGORY 3: PREFERENCES */}
-              {/* ------------------------------------------------------------- */}
-              <div className="space-y-2">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                  Preferences
-                </span>
-
-                <div className="neu-flat rounded-[22px] overflow-hidden divide-y divide-slate-100/80">
-                  {/* Notifications > */}
-                  <button
-                    onClick={() => setCurrentSection('notifications')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-amber-500">
-                        <Bell className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Notifications</p>
-                        <p className="text-[11px] text-slate-500">
-                          Story, Message, Updates, Following & Quiet Hours
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* Language > */}
-                  <button
-                    onClick={() => setCurrentSection('language')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
-                        <Globe className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Language</p>
-                        <p className="text-[11px] text-slate-500">
-                          {currentLanguageObj.name} ({currentLanguageObj.nativeName})
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* Media & Cache > */}
-                  <button
-                    onClick={() => setCurrentSection('media')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
-                        <HardDrive className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Media &amp; Cache</p>
-                        <p className="text-[11px] text-slate-500">{cacheSize} cached media</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* Clear Search History */}
-                  <div className="px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-slate-600">
-                        <Search className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Clear Search History</p>
-                        <p className="text-[11px] text-slate-500">
-                          {getSearchHistory().length} recent searches saved
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => setShowClearHistoryConfirm(true)}
-                      className="px-3 py-1 rounded-full neu-raised text-xs font-bold text-slate-600 hover:text-red-500 cursor-pointer shadow-xs"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* ------------------------------------------------------------- */}
-              {/* CATEGORY 4: PRIVACY & SECURITY CONTROLS */}
-              {/* ------------------------------------------------------------- */}
-              <div className="space-y-2">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                  Privacy &amp; Security Controls
-                </span>
-
-                <div className="neu-flat rounded-[22px] overflow-hidden divide-y divide-slate-100/80">
-                  {/* Public Profile Settings > */}
-                  <button
-                    onClick={() => setCurrentSection('public_profile')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
-                        <Globe className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Public Profile Settings</p>
-                        <p className="text-[11px] text-slate-500">Control public visibility of personal info</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* Privacy Controls > */}
+                  {/* Privacy */}
                   <button
                     onClick={() => setCurrentSection('privacy_controls')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-emerald-600">
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-indigo-500">
                         <Lock className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800">Privacy Controls</p>
-                        <p className="text-[11px] text-slate-500">Private account, mentions, tags, activity indicator</p>
+                        <p className="text-xs font-bold text-slate-800">Privacy</p>
+                        <p className="text-[11px] text-slate-500">Who can view, tag &amp; contact you</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </button>
 
-                  {/* Blocked List > */}
+                  {/* Blocked Users */}
                   <button
                     onClick={() => setCurrentSection('blocked_list')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-red-500">
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-rose-500">
                         <UserX className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800">Blocked List</p>
-                        <p className="text-[11px] text-slate-500">Manage blocked users & restrictions</p>
+                        <p className="text-xs font-bold text-slate-800">Blocked Users</p>
+                        <p className="text-[11px] text-slate-500">Manage blocked &amp; restricted accounts</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </button>
 
-                  {/* Who Can Contact Me > */}
+                  {/* Safety Center */}
                   <button
-                    onClick={() => setCurrentSection('who_can_contact')}
+                    onClick={() => setCurrentSection('safety_centre')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-purple-500">
-                        <MessageSquare className="w-4 h-4" />
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-emerald-500">
+                        <ShieldAlert className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800">Who Can Contact Me</p>
-                        <p className="text-[11px] text-slate-500">Direct messages, voice notes & spam filter</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* Clear Conversations > */}
-                  <button
-                    onClick={() => setCurrentSection('clear_conversation')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-blue-500">
-                        <MessageSquare className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Clear Conversations</p>
-                        <p className="text-[11px] text-slate-500">
-                          {chatThreads.length} active message conversations
-                        </p>
+                        <p className="text-xs font-bold text-slate-800">Safety Center</p>
+                        <p className="text-[11px] text-slate-500">Emergency contacts, helplines &amp; advice</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -996,49 +520,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* ------------------------------------------------------------- */}
-              {/* CATEGORY 5: HELP & SUPPORT */}
+              {/* CATEGORY 3: SUPPORT */}
               {/* ------------------------------------------------------------- */}
               <div className="space-y-2">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                  Help &amp; Support
+                  Support
                 </span>
 
                 <div className="neu-flat rounded-[22px] overflow-hidden divide-y divide-slate-100/80">
-                  {/* Safety Centre > */}
-                  <button
-                    onClick={() => setCurrentSection('safety_centre')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-emerald-600">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Safety Centre</p>
-                        <p className="text-[11px] text-slate-500">Crisis helplines, scam guides & protection</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* Help Centre > */}
+                  {/* Help & Support */}
                   <button
                     onClick={() => setCurrentSection('help_centre')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-blue-500">
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-[#5B9DFF]">
                         <HelpCircle className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800">Help Centre</p>
-                        <p className="text-[11px] text-slate-500">Guides, FAQs & 24/7 Support Tickets</p>
+                        <p className="text-xs font-bold text-slate-800">Help &amp; Support</p>
+                        <p className="text-[11px] text-slate-500">Guides, FAQs &amp; contact support</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </button>
 
-                  {/* Bugs and Suggestions > */}
+                  {/* Report a Problem */}
                   <button
                     onClick={() => setCurrentSection('bugs_suggestions')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
@@ -1048,8 +555,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <Bug className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800">Bugs and Suggestions</p>
-                        <p className="text-[11px] text-slate-500">Report problems or submit ideas</p>
+                        <p className="text-xs font-bold text-slate-800">Report a Problem</p>
+                        <p className="text-[11px] text-slate-500">Submit bug reports &amp; suggestions</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* Grievance / Complaints */}
+                  <button
+                    onClick={() => setCurrentSection('grievance')}
+                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-purple-600">
+                        <Scale className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Grievance / Complaints</p>
+                        <p className="text-[11px] text-slate-500">Formal complaints &amp; Redressal Officer</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -1058,32 +582,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* ------------------------------------------------------------- */}
-              {/* CATEGORY 6: LEGAL & INFORMATION */}
+              {/* CATEGORY 4: LEGAL */}
               {/* ------------------------------------------------------------- */}
               <div className="space-y-2">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                  Legal &amp; Information
+                  Legal
                 </span>
 
                 <div className="neu-flat rounded-[22px] overflow-hidden divide-y divide-slate-100/80">
-                  {/* More Info > */}
-                  <button
-                    onClick={() => setCurrentSection('more_info')}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-indigo-500">
-                        <Info className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">More Info</p>
-                        <p className="text-[11px] text-slate-500">Version 2.4.0 (Build 2026.08.16)</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* Privacy Policy > */}
+                  {/* Privacy Policy */}
                   <button
                     onClick={() => setCurrentSection('privacy_policy')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
@@ -1094,13 +601,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div>
                         <p className="text-xs font-bold text-slate-800">Privacy Policy</p>
-                        <p className="text-[11px] text-slate-500">Data protection & ephemeral guarantees</p>
+                        <p className="text-[11px] text-slate-500">Data protection &amp; user rights</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </button>
 
-                  {/* Terms of Service > */}
+                  {/* Terms & Conditions */}
                   <button
                     onClick={() => setCurrentSection('terms_of_service')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
@@ -1110,25 +617,76 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <BookOpen className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800">Terms of Service</p>
-                        <p className="text-[11px] text-slate-500">Community rules & user agreement</p>
+                        <p className="text-xs font-bold text-slate-800">Terms &amp; Conditions</p>
+                        <p className="text-[11px] text-slate-500">User agreement &amp; service terms</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </button>
 
-                  {/* Other Legal > */}
+                  {/* Community Guidelines */}
                   <button
-                    onClick={() => setCurrentSection('other_legal')}
+                    onClick={() => setCurrentSection('community_guidelines')}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-purple-600">
-                        <Scale className="w-4 h-4" />
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-emerald-500">
+                        <HeartHandshake className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800">Other Legal Notices</p>
-                        <p className="text-[11px] text-slate-500">Open source licenses & copyright</p>
+                        <p className="text-xs font-bold text-slate-800">Community Guidelines</p>
+                        <p className="text-[11px] text-slate-500">Safety, respect &amp; content rules</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* Copyright & Intellectual Property */}
+                  <button
+                    onClick={() => setCurrentSection('copyright_ip')}
+                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-amber-500">
+                        <Copyright className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Copyright &amp; Intellectual Property</p>
+                        <p className="text-[11px] text-slate-500">DMCA takedown &amp; IP protection</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* Child Safety & Age Policy */}
+                  <button
+                    onClick={() => setCurrentSection('child_safety')}
+                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-rose-500">
+                        <Baby className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Child Safety &amp; Age Policy</p>
+                        <p className="text-[11px] text-slate-500">Protection of minors &amp; zero tolerance</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* About Funshann */}
+                  <button
+                    onClick={() => setCurrentSection('about')}
+                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-slate-600">
+                        <Info className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">About Funshann</p>
+                        <p className="text-[11px] text-slate-500">v2.4.0 • Neumorphic Social Platform</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -1170,6 +728,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* ========================================================================= */}
           {/* 2. SUB-PAGES (Dedicated modular clean views with Android back support) */}
           {/* ========================================================================= */}
+
+          {/* ACCOUNT & SECURITY HUB */}
+          {currentSection === 'account_security' && (
+            <AccountSecurityHubSubPage
+              currentUser={currentUser}
+              onNavigateSection={setCurrentSection}
+              onShowToast={onShowToast}
+            />
+          )}
 
           {/* ACCOUNT SETTINGS SUBPAGES */}
           {currentSection === 'username' && (
@@ -1330,7 +897,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
 
           {(currentSection === 'privacy_controls' || currentSection === 'privacy') && (
-            <PrivacyControlsSubPage onShowToast={onShowToast} />
+            <PrivacyControlsSubPage
+              currentUser={currentUser}
+              onNavigateSection={(sec) => setCurrentSection(sec)}
+              onShowToast={onShowToast}
+            />
           )}
 
           {currentSection === 'blocked_list' && (
@@ -1355,10 +926,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* HELP & SUPPORT SUBPAGES */}
           {currentSection === 'safety_centre' && (
-            <SafetyCentreSubPage
+            <SafetyCenterSubPage
               onShowToast={onShowToast}
               onOpenBlockedList={() => setCurrentSection('blocked_list')}
               onOpenPrivacyControls={() => setCurrentSection('privacy_controls')}
+              onOpenCommunityGuidelines={() => setCurrentSection('community_guidelines')}
+              onOpenChildSafetyPolicy={() => setCurrentSection('child_safety')}
             />
           )}
 
@@ -1370,21 +943,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <BugsAndSuggestionsSubPage onShowToast={onShowToast} />
           )}
 
+          {currentSection === 'grievance' && (
+            <GrievanceSubPage currentUser={currentUser} onShowToast={onShowToast} />
+          )}
+
           {/* LEGAL & INFORMATION SUBPAGES */}
           {(currentSection === 'more_info' || currentSection === 'about') && (
-            <LegalDocumentsSubPage documentType="more_info" onShowToast={onShowToast} />
+            <LegalDocumentsSubPage
+              documentType="about"
+              onNavigateDocument={(doc) => setCurrentSection(doc as SettingsSection)}
+              onShowToast={onShowToast}
+            />
           )}
 
           {currentSection === 'privacy_policy' && (
-            <LegalDocumentsSubPage documentType="privacy_policy" onShowToast={onShowToast} />
+            <LegalDocumentsSubPage
+              documentType="privacy_policy"
+              onNavigateDocument={(doc) => setCurrentSection(doc as SettingsSection)}
+              onShowToast={onShowToast}
+            />
           )}
 
           {currentSection === 'terms_of_service' && (
-            <LegalDocumentsSubPage documentType="terms_of_service" onShowToast={onShowToast} />
+            <LegalDocumentsSubPage
+              documentType="terms_of_service"
+              onNavigateDocument={(doc) => setCurrentSection(doc as SettingsSection)}
+              onShowToast={onShowToast}
+            />
+          )}
+
+          {currentSection === 'community_guidelines' && (
+            <LegalDocumentsSubPage
+              documentType="community_guidelines"
+              onNavigateDocument={(doc) => setCurrentSection(doc as SettingsSection)}
+              onShowToast={onShowToast}
+            />
+          )}
+
+          {currentSection === 'copyright_ip' && (
+            <LegalDocumentsSubPage
+              documentType="copyright_ip"
+              onNavigateDocument={(doc) => setCurrentSection(doc as SettingsSection)}
+              onShowToast={onShowToast}
+            />
+          )}
+
+          {currentSection === 'child_safety' && (
+            <LegalDocumentsSubPage
+              documentType="child_safety"
+              onNavigateDocument={(doc) => setCurrentSection(doc as SettingsSection)}
+              onShowToast={onShowToast}
+            />
+          )}
+
+          {(currentSection === 'disclaimer' || currentSection === 'app_disclaimer') && (
+            <LegalDocumentsSubPage
+              documentType="disclaimer"
+              onNavigateDocument={(doc) => setCurrentSection(doc as SettingsSection)}
+              onShowToast={onShowToast}
+            />
           )}
 
           {currentSection === 'other_legal' && (
-            <LegalDocumentsSubPage documentType="other_legal" onShowToast={onShowToast} />
+            <LegalDocumentsSubPage
+              documentType="other_legal"
+              onNavigateDocument={(doc) => setCurrentSection(doc as SettingsSection)}
+              onShowToast={onShowToast}
+            />
           )}
         </div>
 

@@ -18,6 +18,9 @@ import {
   Eye,
   AlertTriangle,
   Sparkles,
+  UserX,
+  Flag,
+  ShieldAlert,
 } from 'lucide-react';
 import { User } from '../types';
 import {
@@ -26,6 +29,8 @@ import {
   getIndividualChatSettings,
   saveIndividualChatSettings,
 } from '../services/individualChatSettingsService';
+import { UniversalReportModal } from './UniversalReportModal';
+import { blockUserAccount, isUserBlocked } from '../services/safetyService';
 
 interface IndividualUserMenuProps {
   isOpen: boolean;
@@ -37,6 +42,7 @@ interface IndividualUserMenuProps {
   isLocked?: boolean;
   onToggleLockChat?: (userId: string) => void;
   onShowToast?: (message: string) => void;
+  onUserBlocked?: (userId: string) => void;
 }
 
 type MenuScreen = 'main' | 'delete_chat' | 'notification';
@@ -51,23 +57,48 @@ export const IndividualUserMenu: React.FC<IndividualUserMenuProps> = ({
   isLocked,
   onToggleLockChat,
   onShowToast,
+  onUserBlocked,
 }) => {
   const [currentScreen, setCurrentScreen] = useState<MenuScreen>('main');
   const [chatSettings, setChatSettings] = useState<UserChatSettings>(() =>
     getIndividualChatSettings(user.id)
   );
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [isCurrentlyBlocked, setIsCurrentlyBlocked] = useState(false);
 
   // Sync settings when menu opens for user
   useEffect(() => {
     if (isOpen) {
       setCurrentScreen('main');
       setShowClearConfirm(false);
+      setShowBlockConfirm(false);
+      setShowReportModal(false);
+      setIsCurrentlyBlocked(isUserBlocked(user.id));
       setChatSettings(getIndividualChatSettings(user.id));
     }
   }, [isOpen, user.id]);
 
   if (!isOpen) return null;
+
+  const handleBlockConfirm = () => {
+    blockUserAccount({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      avatar: user.avatar,
+    });
+    setIsCurrentlyBlocked(true);
+    setShowBlockConfirm(false);
+    if (onShowToast) {
+      onShowToast(`Blocked @${user.username}. They cannot contact or view your profile.`);
+    }
+    if (onUserBlocked) {
+      onUserBlocked(user.id);
+    }
+    onClose();
+  };
 
   const handleUpdateAutoDelete = (mode: AutoDeleteDuration) => {
     const updated = saveIndividualChatSettings(user.id, { autoDelete: mode });
@@ -286,6 +317,39 @@ export const IndividualUserMenu: React.FC<IndividualUserMenuProps> = ({
                       {chatSettings.isMuted ? 'Muted' : chatSettings.soundEnabled ? 'Sound On' : 'Sound Off'}
                     </span>
                     <ChevronRight className="w-4.5 h-4.5 text-slate-400" />
+                  </div>
+                </button>
+
+                {/* 6. Block User */}
+                <button
+                  type="button"
+                  onClick={() => setShowBlockConfirm(true)}
+                  className="w-full h-12 px-3.5 rounded-[18px] text-left text-[14px] font-bold text-rose-600 hover:bg-rose-50/80 flex items-center justify-between transition cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8.5 h-8.5 rounded-full neu-raised flex items-center justify-center text-rose-500">
+                      <UserX className="w-4.5 h-4.5" />
+                    </div>
+                    <span>{isCurrentlyBlocked ? 'Unblock User' : 'Block User'}</span>
+                  </div>
+                  {isCurrentlyBlocked && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">
+                      Blocked
+                    </span>
+                  )}
+                </button>
+
+                {/* 7. Report Profile */}
+                <button
+                  type="button"
+                  onClick={() => setShowReportModal(true)}
+                  className="w-full h-12 px-3.5 rounded-[18px] text-left text-[14px] font-bold text-amber-700 hover:bg-amber-50/80 flex items-center justify-between transition cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8.5 h-8.5 rounded-full neu-raised flex items-center justify-center text-amber-600">
+                      <Flag className="w-4.5 h-4.5" />
+                    </div>
+                    <span>Report Profile</span>
                   </div>
                 </button>
               </div>
@@ -534,6 +598,76 @@ export const IndividualUserMenu: React.FC<IndividualUserMenuProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Block User Confirmation Modal */}
+        <AnimatePresence>
+          {showBlockConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-60 bg-black/55 backdrop-blur-xs flex items-center justify-center p-4"
+              onClick={() => setShowBlockConfirm(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.92, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.92, opacity: 0 }}
+                className="w-full max-w-sm neu-flat rounded-[28px] p-5 bg-white shadow-2xl space-y-4 border border-slate-200"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 neu-raised flex-shrink-0">
+                    <UserX className="w-5.5 h-5.5" />
+                  </div>
+                  <div>
+                    <h3 className="text-[15px] font-bold text-slate-800">
+                      {isCurrentlyBlocked ? 'Unblock Account?' : 'Block Account?'}
+                    </h3>
+                    <p className="text-[12px] text-slate-500 mt-0.5">
+                      @{user.username} ({user.name})
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-[12px] text-slate-600 bg-rose-50/50 p-3.5 rounded-[18px] border border-rose-100 leading-relaxed">
+                  {isCurrentlyBlocked
+                    ? 'Unblocking will allow this user to view your public profile and send messages according to your privacy settings.'
+                    : 'They will not be able to find your profile, view your posts, or send you messages on Funshann. They will not be notified that you blocked them.'}
+                </p>
+
+                <div className="flex items-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowBlockConfirm(false)}
+                    className="flex-1 h-11 rounded-full neu-raised text-xs font-bold text-slate-700 hover:text-slate-900 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBlockConfirm}
+                    className="flex-1 h-11 rounded-full bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white shadow-md transition cursor-pointer"
+                  >
+                    {isCurrentlyBlocked ? 'Unblock' : 'Block'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Universal Report Modal for Profile */}
+        <UniversalReportModal
+          isOpen={showReportModal}
+          contentType="profile"
+          contentId={user.id}
+          targetUser={user}
+          reporterUserId="current_user"
+          snippet={`Profile @${user.username} (${user.name})`}
+          onClose={() => setShowReportModal(false)}
+          onShowToast={onShowToast}
+        />
       </div>
     </AnimatePresence>
   );
