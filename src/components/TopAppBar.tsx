@@ -1,6 +1,7 @@
 import React from 'react';
-import { Bell, Send } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useTranslation } from '../context/LanguageContext';
 
 interface TopAppBarProps {
   unreadNotificationsCount: number;
@@ -15,6 +16,8 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
   onOpenNotifications,
   onLogoClick,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <header className="sticky top-0 z-30 w-full px-5 py-3.5 bg-gradient-to-b from-[#f4f7fb]/95 via-[#f4f7fb]/90 to-transparent backdrop-blur-md transition-all">
       <div className="flex items-center justify-between max-w-lg mx-auto">
@@ -41,7 +44,8 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.94 }}
             onClick={onOpenNotifications}
-            aria-label="Notifications"
+            aria-label={t('nav_notifications')}
+            title={t('nav_notifications')}
             className="relative w-12 h-12 rounded-full neu-raised flex items-center justify-center text-slate-600 hover:text-[#5B9DFF] transition-colors cursor-pointer"
           >
             <Bell className="w-6 h-6 transition-transform" />

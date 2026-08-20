@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, CheckCircle2, UserPlus, UserCheck, MessageSquare, MapPin, Sparkles, Users, ShieldCheck, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { User } from '../types';
+import { useTranslation } from '../context/LanguageContext';
 
 interface SearchPeopleViewProps {
   users: User[];
@@ -18,15 +19,16 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
   onUserSelect,
   onShowToast,
 }) => {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<'all' | 'verified' | 'creators' | 'following' | 'contacts'>('all');
 
   const categories = [
-    { id: 'all', label: 'Explore All' },
-    { id: 'contacts', label: 'From Contacts 👥' },
-    { id: 'verified', label: 'Verified ✨' },
-    { id: 'creators', label: 'Top Creators 📸' },
-    { id: 'following', label: 'Following' },
+    { id: 'all', label: t('search_filter_all') },
+    { id: 'contacts', label: t('search_filter_contacts') },
+    { id: 'verified', label: t('search_filter_verified') },
+    { id: 'creators', label: t('search_filter_creators') },
+    { id: 'following', label: t('search_filter_following') },
   ];
 
   const filteredUsers = users.filter((user) => {
@@ -50,7 +52,7 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
       {/* Header */}
       <div className="mb-3.5">
         <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
-          Discover
+          {t('search_title')}
         </h2>
       </div>
 
@@ -63,7 +65,7 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name, handle, style or city..."
+            placeholder={t('search_placeholder')}
             className="w-full bg-transparent text-[14.5px] text-slate-800 placeholder-slate-400 focus:outline-none"
           />
           {searchQuery && (
@@ -71,7 +73,7 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
               onClick={() => setSearchQuery('')}
               className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-1 cursor-pointer"
             >
-              Clear
+              {t('common_clear')}
             </button>
           )}
         </div>
@@ -103,15 +105,15 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
               <Users className="w-5.5 h-5.5" />
             </div>
             <div>
-              <h4 className="text-[13.5px] font-bold text-slate-800">People You May Know</h4>
+              <h4 className="text-[13.5px] font-bold text-slate-800">{t('search_contacts_banner_title')}</h4>
               <p className="text-[12px] text-slate-500">
-                &ldquo;Contacts access can help you find people you know on Funshann.&rdquo;
+                {t('search_contacts_banner_desc')}
               </p>
             </div>
           </div>
           <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Private</span>
+            <span>{t('common_private')}</span>
           </span>
         </div>
       ) : (
@@ -121,12 +123,12 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
               <Sparkles className="w-5.5 h-5.5" />
             </div>
             <div>
-              <h4 className="text-[13.5px] font-bold text-slate-800">Curated Creators</h4>
-              <p className="text-[12px] text-slate-500">Discover handpicked visual storytellers</p>
+              <h4 className="text-[13.5px] font-bold text-slate-800">{t('search_curated_banner_title')}</h4>
+              <p className="text-[12px] text-slate-500">{t('search_curated_banner_desc')}</p>
             </div>
           </div>
           <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#5B9DFF]/15 text-[#5B9DFF]">
-            Trending
+            {t('common_trending')}
           </span>
         </div>
       )}
@@ -135,8 +137,8 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
       <div>
         {filteredUsers.length === 0 ? (
           <div className="neu-flat rounded-[24px] p-8 text-center">
-            <p className="text-[15px] font-semibold text-slate-700">No people found</p>
-            <p className="text-[13px] text-slate-400 mt-1">Try a different search keyword or category</p>
+            <p className="text-[15px] font-semibold text-slate-700">{t('search_no_results_title')}</p>
+            <p className="text-[13px] text-slate-400 mt-1">{t('search_no_results_desc')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -195,12 +197,12 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
                     {user.isFollowing ? (
                       <>
                         <UserCheck className="w-3 h-3" />
-                        <span>Following</span>
+                        <span>{t('common_following')}</span>
                       </>
                     ) : (
                       <>
                         <UserPlus className="w-3 h-3" />
-                        <span>Follow</span>
+                        <span>{t('common_follow')}</span>
                       </>
                     )}
                   </motion.button>
@@ -227,3 +229,4 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
 };
 
 export const SearchPeopleView = React.memo(SearchPeopleViewComponent);
+

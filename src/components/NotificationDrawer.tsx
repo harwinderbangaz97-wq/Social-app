@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationItem, User } from '../types';
+import { useTranslation } from '../context/LanguageContext';
 
 interface NotificationDrawerProps {
   notifications: NotificationItem[];
@@ -40,6 +41,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   onOpenProfile,
   onOpenChat,
 }) => {
+  const { t } = useTranslation();
   const [selectedNotifId, setSelectedNotifId] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -63,7 +65,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
           {/* Header */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-slate-800">Notifications</h3>
+              <h3 className="text-base font-bold text-slate-800">{t('nav_notifications')}</h3>
               <span className="w-2 h-2 rounded-full bg-[#5B9DFF]" />
             </div>
             <div className="flex items-center gap-2">
@@ -72,10 +74,11 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                 className="text-[11px] font-bold text-[#5B9DFF] hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
-                Read all
+                {t('common_read_all')}
               </button>
               <button
                 onClick={onClose}
+                aria-label={t('common_close')}
                 className="w-7 h-7 rounded-full neu-raised flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
@@ -87,7 +90,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
           <div className="flex-1 overflow-y-auto no-scrollbar py-3 space-y-2.5">
             {notifications.length === 0 ? (
               <div className="text-center py-8 text-xs text-slate-400">
-                You are all caught up!
+                {t('notifications_caught_up')}
               </div>
             ) : (
               notifications.map((notif) => {

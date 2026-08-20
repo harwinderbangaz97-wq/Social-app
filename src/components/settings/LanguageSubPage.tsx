@@ -4,16 +4,10 @@ import {
   Globe,
   Search,
   Check,
-  Sparkles,
-  CheckCircle2,
   X,
 } from 'lucide-react';
-import {
-  LANGUAGES_LIST,
-  getSavedLanguage,
-  saveSelectedLanguage,
-  LanguageItem,
-} from '../../services/languageService';
+import { useTranslation } from '../../context/LanguageContext';
+import { LanguageMeta } from '../../i18n/types';
 
 interface LanguageSubPageProps {
   onShowToast: (msg: string) => void;
@@ -24,25 +18,26 @@ export const LanguageSubPage: React.FC<LanguageSubPageProps> = ({
   onShowToast,
   onLanguageChange,
 }) => {
-  const [selectedLang, setSelectedLang] = useState<string>(() => getSavedLanguage());
+  const { currentLanguage, setLanguage, languagesList, t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const filteredLanguages = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return LANGUAGES_LIST;
-    return LANGUAGES_LIST.filter(
+    if (!q) return languagesList;
+    return languagesList.filter(
       (l) =>
         l.name.toLowerCase().includes(q) ||
         l.nativeName.toLowerCase().includes(q) ||
         l.code.toLowerCase().includes(q)
     );
-  }, [searchQuery]);
+  }, [searchQuery, languagesList]);
 
-  const currentLanguageObj = LANGUAGES_LIST.find((l) => l.code === selectedLang) || LANGUAGES_LIST[6];
+  const currentLanguageObj = useMemo(() => {
+    return languagesList.find((l) => l.code === currentLanguage) || languagesList[0];
+  }, [currentLanguage, languagesList]);
 
-  const handleSelectLanguage = (lang: LanguageItem) => {
-    setSelectedLang(lang.code);
-    saveSelectedLanguage(lang.code);
+  const handleSelectLanguage = (lang: LanguageMeta) => {
+    setLanguage(lang.code);
     if (onLanguageChange) {
       onLanguageChange(lang.code);
     }
@@ -61,11 +56,11 @@ export const LanguageSubPage: React.FC<LanguageSubPageProps> = ({
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Current Language
+                  {t('settings_language')}
                 </span>
                 <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-0.5">
                   <Check className="w-2.5 h-2.5" />
-                  Active
+                  {t('common_active')}
                 </span>
               </div>
               <h3 className="text-sm font-bold text-slate-800">
@@ -86,7 +81,7 @@ export const LanguageSubPage: React.FC<LanguageSubPageProps> = ({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search 42 languages (e.g. Spanish, हिन्दी, 日本語)..."
+          placeholder={`${t('common_search')} (${languagesList.length} languages: Spanish, हिन्दी, اردو, Español)...`}
           className="w-full h-11 pl-10 pr-9 rounded-[20px] neu-inset bg-slate-50/50 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]"
         />
         {searchQuery && (
@@ -103,19 +98,19 @@ export const LanguageSubPage: React.FC<LanguageSubPageProps> = ({
       <div className="space-y-2">
         <div className="flex items-center justify-between px-1">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-            All Available Languages ({filteredLanguages.length})
+            {t('common_see_all')} ({filteredLanguages.length})
           </span>
-          <span className="text-[10px] text-slate-400">Tap to apply</span>
+          <span className="text-[10px] text-slate-400">{t('common_tap_to_apply')}</span>
         </div>
 
         {filteredLanguages.length === 0 ? (
           <div className="neu-flat rounded-[22px] p-6 text-center text-slate-400 text-xs">
-            No language matching &ldquo;{searchQuery}&rdquo;
+            {t('search_no_results_title')} &ldquo;{searchQuery}&rdquo;
           </div>
         ) : (
           <div className="neu-flat rounded-[22px] overflow-hidden divide-y divide-slate-100/80 max-h-[380px] overflow-y-auto">
             {filteredLanguages.map((lang) => {
-              const isSelected = selectedLang === lang.code;
+              const isSelected = currentLanguage === lang.code;
               return (
                 <motion.button
                   key={lang.code}
@@ -130,7 +125,7 @@ export const LanguageSubPage: React.FC<LanguageSubPageProps> = ({
                       <span className="text-xs font-bold text-slate-800">{lang.name}</span>
                       {isSelected && (
                         <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-full bg-[#5B9DFF] text-white">
-                          Selected
+                          {t('common_selected')}
                         </span>
                       )}
                     </div>
@@ -155,3 +150,4 @@ export const LanguageSubPage: React.FC<LanguageSubPageProps> = ({
     </div>
   );
 };
+

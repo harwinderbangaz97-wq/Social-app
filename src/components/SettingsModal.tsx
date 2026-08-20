@@ -59,6 +59,7 @@ import {
 
 export type { SettingsSection };
 import { useNavigation } from '../context/NavigationContext';
+import { useTranslation } from '../context/LanguageContext';
 import { getStoredPermissions, saveStoredPermissions } from '../services/permissionService';
 import { getSavedLanguage, LANGUAGES_LIST } from '../services/languageService';
 import { clearSearchHistory, getSearchHistory } from '../services/searchHistoryService';
@@ -223,9 +224,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (onLogout) onLogout();
   };
 
-  const currentLanguageCode = getSavedLanguage();
-  const currentLanguageObj =
-    LANGUAGES_LIST.find((l) => l.code === currentLanguageCode) || LANGUAGES_LIST[6];
+  const { t, languageObj } = useTranslation();
 
   const maskMobile = (phone?: string) => {
     if (!phone) return '+1 (555) 234-5678';

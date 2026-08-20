@@ -46,6 +46,7 @@ import { DeviceFrame } from './components/DeviceFrame';
 import { SettingsModal, SettingsSection } from './components/SettingsModal';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { PermissionAndMediaProvider, usePermissionAndMedia } from './context/PermissionAndMediaContext';
+import { LanguageProvider, useTranslation } from './context/LanguageContext';
 import { AndroidGestureBack } from './components/AndroidGestureBack';
 import { SplashScreen } from './components/SplashScreen';
 import { WelcomeAuthScreen } from './components/WelcomeAuthScreen';
@@ -1236,11 +1237,13 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export default function App() {
   return (
     <ErrorBoundary>
-      <PermissionAndMediaProvider>
-        <NavigationProvider>
-          <AppContent />
-        </NavigationProvider>
-      </PermissionAndMediaProvider>
+      <LanguageProvider>
+        <PermissionAndMediaProvider>
+          <NavigationProvider>
+            <AppContent />
+          </NavigationProvider>
+        </PermissionAndMediaProvider>
+      </LanguageProvider>
     </ErrorBoundary>
   );
 }
