@@ -123,6 +123,12 @@ export interface MessagePrivacySettings {
   deleteAfterSeenDelay?: number;
 }
 
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  userIds: string[];
+}
+
 export interface Message {
   id: string;
   senderId: string;
@@ -136,6 +142,7 @@ export interface Message {
   createdAt?: number;
   seenAt?: number;
   disappearingSeconds?: number;
+  reactions?: MessageReaction[];
 }
 
 export interface ChatThread {

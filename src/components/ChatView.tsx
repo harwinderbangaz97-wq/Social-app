@@ -24,6 +24,8 @@ import {
   Clock,
   AlertTriangle,
   Info,
+  Smile,
+  Plus,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, ChatThread, Message, VoiceNoteData, MessagePrivacyMode, MessageReportReason } from '../types';
@@ -38,6 +40,14 @@ import { usePermissionAndMedia } from '../context/PermissionAndMediaContext';
 import { audioRecorder } from '../services/audioRecorderService';
 import { validateMessageDeletion, getMessagePrivacySettings } from '../data/messagePrivacyService';
 import { getIndividualChatSettings } from '../services/individualChatSettingsService';
+
+export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
+export const MORE_REACTIONS = [
+  '👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉',
+  '😍', '🥰', '🤩', '🥳', '💯', '✨', '💡', '🚀',
+  '👀', '💪', '🙌', '🤝', '🎯', '💎', '🌟', '⚡',
+  '😎', '🤔', '🫡', '🌸', '☕', '🎨', '🏖️', '⛰️',
+];
 
 interface ChatViewProps {
   threads: ChatThread[];
@@ -60,6 +70,7 @@ interface ChatViewProps {
     details?: string
   ) => void;
   onMarkMessageSeen?: (threadId: string, messageId: string) => void;
+  onToggleReaction?: (threadId: string, messageId: string, emoji: string) => void;
   lockedChatUserIds?: string[];
   chatLockPasscode?: string;
   isChatLockEnabled?: boolean;
@@ -78,15 +89,25 @@ const CHAT_SAMPLE_IMAGES = [
   'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop&q=80',
 ];
 
-// Single Message Bubble Item with Countdown and Long-press support
+// Single Message Bubble Item with Countdown, Long-press and Reaction Overlays
 const MessageBubbleItem: React.FC<{
   msg: Message;
   isOwn: boolean;
   activeThreadId: string;
+  currentUserId: string;
   onDeleteMessage?: (messageId: string) => void;
   onOpenContextMenu: (msg: Message) => void;
   onImageClick: (url: string) => void;
-}> = ({ msg, isOwn, onDeleteMessage, onOpenContextMenu, onImageClick }) => {
+  onToggleReaction?: (messageId: string, emoji: string) => void;
+}> = ({
+  msg,
+  isOwn,
+  currentUserId,
+  onDeleteMessage,
+  onOpenContextMenu,
+  onImageClick,
+  onToggleReaction,
+}) => {
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
   const touchTimerRef = useRef<number | null>(null);
   const isTouchMoved = useRef(false);
@@ -126,10 +147,10 @@ const MessageBubbleItem: React.FC<{
     isTouchMoved.current = false;
     touchTimerRef.current = window.setTimeout(() => {
       if (!isTouchMoved.current) {
-        if (navigator.vibrate) navigator.vibrate(35);
+        if (navigator.vibrate) navigator.vibrate(40);
         onOpenContextMenu(msg);
       }
-    }, 450);
+    }, 400);
   };
 
   const handleTouchMove = () => {
@@ -150,6 +171,7 @@ const MessageBubbleItem: React.FC<{
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (navigator.vibrate) navigator.vibrate(30);
     onOpenContextMenu(msg);
   };
 
@@ -247,6 +269,54 @@ const MessageBubbleItem: React.FC<{
         )}
       </div>
 
+      {/* Reaction Icons & Count Overlay (Attached below the bubble) */}
+      {msg.reactions && msg.reactions.length > 0 && (
+        <motion.div
+          layout
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className={`flex flex-wrap items-center gap-1 mt-1 z-10 select-none ${
+            isOwn ? 'justify-end pr-1' : 'justify-start pl-1'
+          }`}
+        >
+          {msg.reactions.map((r) => {
+            const hasUserReacted = r.userIds.includes(currentUserId);
+            return (
+              <motion.button
+                key={r.emoji}
+                type="button"
+                whileTap={{ scale: 0.82 }}
+                whileHover={{ scale: 1.1 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onToggleReaction) {
+                    if (navigator.vibrate) navigator.vibrate(20);
+                    onToggleReaction(msg.id, r.emoji);
+                  }
+                }}
+                className={`group/r flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shadow-xs transition cursor-pointer backdrop-blur-md ${
+                  hasUserReacted
+                    ? 'bg-blue-50/95 border border-[#5B9DFF] text-[#1d4ed8] shadow-sm ring-1 ring-[#5B9DFF]/30 font-bold'
+                    : 'bg-white/95 border border-slate-200/90 text-slate-700 hover:bg-slate-50'
+                }`}
+                title={
+                  hasUserReacted
+                    ? `You reacted with ${r.emoji} (tap to remove)`
+                    : `React with ${r.emoji} (${r.count})`
+                }
+              >
+                <span className="text-sm leading-none transition-transform group-hover/r:scale-120">
+                  {r.emoji}
+                </span>
+                {r.count > 1 && (
+                  <span className="text-[10px] font-bold opacity-90">{r.count}</span>
+                )}
+              </motion.button>
+            );
+          })}
+        </motion.div>
+      )}
+
       {/* Timestamp, Seen Status, and Quick Options Button */}
       <div className="flex items-center gap-1.5 mt-1 px-1 text-[10px] text-slate-500 font-semibold drop-shadow-xs">
         <span className="bg-white/70 backdrop-blur-xs px-1.5 py-0.2 rounded-md">{msg.timestamp}</span>
@@ -258,7 +328,7 @@ const MessageBubbleItem: React.FC<{
           </span>
         )}
 
-        {/* Context options trigger on hover/tap */}
+        {/* Quick React & Context options trigger on hover/tap */}
         <button
           type="button"
           onClick={(e) => {
@@ -266,7 +336,7 @@ const MessageBubbleItem: React.FC<{
             onOpenContextMenu(msg);
           }}
           className="opacity-60 hover:opacity-100 p-0.5 text-slate-400 hover:text-slate-700 transition"
-          title="Message options"
+          title="React or more options (long-press)"
         >
           <MoreVertical className="w-3 h-3" />
         </button>
@@ -285,6 +355,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onDeleteMessage,
   onReportMessage,
   onMarkMessageSeen,
+  onToggleReaction,
   lockedChatUserIds = [],
   chatLockPasscode = '123456',
   isChatLockEnabled = true,
@@ -319,6 +390,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   // Context Menu & Modals State
   const [contextMessage, setContextMessage] = useState<Message | null>(null);
+  const [showExtendedReactions, setShowExtendedReactions] = useState(false);
   const [reportTargetMessage, setReportTargetMessage] = useState<Message | null>(null);
   const [deleteTargetMessage, setDeleteTargetMessage] = useState<Message | null>(null);
 
@@ -744,9 +816,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       msg={msg}
                       isOwn={isOwn}
                       activeThreadId={activeThread.id}
+                      currentUserId={currentUser.id}
                       onDeleteMessage={handleAutoDeleteMessage}
-                      onOpenContextMenu={(targetMsg) => setContextMessage(targetMsg)}
+                      onOpenContextMenu={(targetMsg) => {
+                        setShowExtendedReactions(false);
+                        setContextMessage(targetMsg);
+                      }}
                       onImageClick={(url) => setLightboxImage(url)}
+                      onToggleReaction={(messageId, emoji) => {
+                        onToggleReaction?.(activeThread.id, messageId, emoji);
+                      }}
                     />
                   );
                 })}
@@ -983,11 +1062,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: '100%', opacity: 0 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="neu-flat rounded-t-[28px] sm:rounded-[28px] max-w-sm w-full p-4 bg-white shadow-2xl border border-slate-200/80 space-y-2.5"
+                className="neu-flat rounded-t-[28px] sm:rounded-[28px] max-w-sm w-full p-4 bg-white shadow-2xl border border-slate-200/80 space-y-3"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header snippet */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 px-1">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 px-1">
                   <div className="min-w-0 flex-1">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                       Message Actions
@@ -1004,8 +1083,153 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   </button>
                 </div>
 
+                {/* Quick Reaction Emoji Bar */}
+                {(() => {
+                  const liveMsg = activeThread?.messages.find((m) => m.id === contextMessage.id) || contextMessage;
+                  return (
+                    <div className="py-1">
+                      <div className="flex items-center justify-between px-1 mb-1.5">
+                        <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                          <Smile className="w-3.5 h-3.5 text-[#5B9DFF]" />
+                          Add Reaction
+                        </span>
+                        <span className="text-[10px] text-slate-400">Tap to react</span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-1 p-1.5 bg-slate-50/90 rounded-[20px] border border-slate-200/80">
+                        {QUICK_REACTIONS.map((emoji) => {
+                          const isReacted = liveMsg.reactions?.some(
+                            (r) => r.emoji === emoji && r.userIds.includes(currentUser.id)
+                          );
+                          return (
+                            <motion.button
+                              key={emoji}
+                              type="button"
+                              whileHover={{ scale: 1.25 }}
+                              whileTap={{ scale: 0.85 }}
+                              onClick={() => {
+                                if (activeThread && onToggleReaction) {
+                                  if (navigator.vibrate) navigator.vibrate(25);
+                                  onToggleReaction(activeThread.id, liveMsg.id, emoji);
+                                }
+                              }}
+                              className={`w-8 h-8 rounded-full flex items-center justify-center text-lg transition-all cursor-pointer select-none ${
+                                isReacted
+                                  ? 'bg-blue-100 ring-2 ring-[#5B9DFF] shadow-xs'
+                                  : 'hover:bg-white active:bg-slate-200'
+                              }`}
+                              title={isReacted ? `Remove ${emoji}` : `React ${emoji}`}
+                            >
+                              {emoji}
+                            </motion.button>
+                          );
+                        })}
+
+                        {/* Plus button to toggle extra emoji list */}
+                        <motion.button
+                          type="button"
+                          whileHover={{ scale: 1.15 }}
+                          whileTap={{ scale: 0.85 }}
+                          onClick={() => setShowExtendedReactions((prev) => !prev)}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                            showExtendedReactions
+                              ? 'bg-[#5B9DFF] text-white shadow-xs'
+                              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
+                          }`}
+                          title="More reactions"
+                        >
+                          <Plus
+                            className={`w-4 h-4 transition-transform duration-200 ${
+                              showExtendedReactions ? 'rotate-45' : ''
+                            }`}
+                          />
+                        </motion.button>
+                      </div>
+
+                      {/* Extended Reaction Grid Palette */}
+                      <AnimatePresence>
+                        {showExtendedReactions && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden mt-2"
+                          >
+                            <div className="grid grid-cols-8 gap-1.5 p-2 bg-slate-50/90 rounded-[18px] border border-slate-200/80 max-h-36 overflow-y-auto no-scrollbar">
+                              {MORE_REACTIONS.map((emoji) => {
+                                const isReacted = liveMsg.reactions?.some(
+                                  (r) => r.emoji === emoji && r.userIds.includes(currentUser.id)
+                                );
+                                return (
+                                  <motion.button
+                                    key={emoji}
+                                    type="button"
+                                    whileHover={{ scale: 1.25 }}
+                                    whileTap={{ scale: 0.85 }}
+                                    onClick={() => {
+                                      if (activeThread && onToggleReaction) {
+                                        if (navigator.vibrate) navigator.vibrate(25);
+                                        onToggleReaction(activeThread.id, liveMsg.id, emoji);
+                                      }
+                                    }}
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all cursor-pointer ${
+                                      isReacted
+                                        ? 'bg-blue-100 ring-2 ring-[#5B9DFF]'
+                                        : 'hover:bg-white active:bg-slate-200'
+                                    }`}
+                                  >
+                                    {emoji}
+                                  </motion.button>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Active reactions breakdown */}
+                      {liveMsg.reactions && liveMsg.reactions.length > 0 && (
+                        <div className="mt-2 px-2 py-1.5 bg-slate-50/80 rounded-[14px] flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600 border border-slate-200/60">
+                          <span className="font-semibold text-slate-400 text-[10px]">Reactions:</span>
+                          {liveMsg.reactions.map((r) => {
+                            const hasMe = r.userIds.includes(currentUser.id);
+                            const hasOther = r.userIds.some((id) => id !== currentUser.id);
+                            let names = '';
+                            if (hasMe && hasOther) {
+                              names = `You & ${activeThread?.participant.name || 'other'}`;
+                            } else if (hasMe) {
+                              names = 'You';
+                            } else {
+                              names = activeThread?.participant.name || 'Friend';
+                            }
+                            return (
+                              <button
+                                key={r.emoji}
+                                type="button"
+                                onClick={() => {
+                                  if (activeThread && onToggleReaction) {
+                                    onToggleReaction(activeThread.id, liveMsg.id, r.emoji);
+                                  }
+                                }}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border transition cursor-pointer ${
+                                  hasMe
+                                    ? 'bg-blue-50/90 border-[#5B9DFF] text-[#1d4ed8] font-bold'
+                                    : 'bg-white border-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <span>{r.emoji}</span>
+                                <span>{names}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Actions list */}
-                <div className="space-y-1 pt-1">
+                <div className="space-y-1 pt-1 border-t border-slate-100">
                   {/* Delete message option (If user's own message) */}
                   {contextMessage.senderId === currentUser.id && (
                     <button

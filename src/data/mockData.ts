@@ -376,6 +376,9 @@ export const INITIAL_CHAT_THREADS: ChatThread[] = [
         text: 'Hey Alex! Loved your recent architectural render on the coastline!',
         timestamp: '14:15',
         isRead: true,
+        reactions: [
+          { emoji: '❤️', count: 1, userIds: ['current_user_1'] },
+        ],
       },
       {
         id: 'm2',
@@ -384,6 +387,9 @@ export const INITIAL_CHAT_THREADS: ChatThread[] = [
         text: 'Thanks Elena! It was inspired by the minimalist stone structures we discussed.',
         timestamp: '14:18',
         isRead: true,
+        reactions: [
+          { emoji: '👍', count: 1, userIds: ['u_elena'] },
+        ],
       },
       {
         id: 'm3',
@@ -393,6 +399,9 @@ export const INITIAL_CHAT_THREADS: ChatThread[] = [
         imageUrl: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=600&auto=format&fit=crop&q=80',
         timestamp: '14:22',
         isRead: true,
+        reactions: [
+          { emoji: '🔥', count: 2, userIds: ['current_user_1', 'u_elena'] },
+        ],
       },
       {
         id: 'm3_voice',

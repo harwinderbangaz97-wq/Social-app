@@ -789,6 +789,61 @@ function AppContent() {
     );
   };
 
+  // Toggle reaction on a message (like 👍, ❤️, 😂, etc.)
+  const handleToggleMessageReaction = (threadId: string, messageId: string, emoji: string) => {
+    setChatThreads((prevThreads) =>
+      prevThreads.map((thread) => {
+        if (thread.id === threadId || thread.participant.id === threadId) {
+          const updatedMessages = thread.messages.map((msg) => {
+            if (msg.id === messageId) {
+              const currentReactions = msg.reactions ? [...msg.reactions] : [];
+              const existingIdx = currentReactions.findIndex((r) => r.emoji === emoji);
+
+              if (existingIdx >= 0) {
+                const existing = currentReactions[existingIdx];
+                const hasUserReacted = existing.userIds.includes(currentUser.id);
+                let nextUserIds: string[];
+                if (hasUserReacted) {
+                  nextUserIds = existing.userIds.filter((id) => id !== currentUser.id);
+                } else {
+                  nextUserIds = [...existing.userIds, currentUser.id];
+                }
+
+                if (nextUserIds.length === 0) {
+                  currentReactions.splice(existingIdx, 1);
+                } else {
+                  currentReactions[existingIdx] = {
+                    emoji,
+                    userIds: nextUserIds,
+                    count: nextUserIds.length,
+                  };
+                }
+              } else {
+                currentReactions.push({
+                  emoji,
+                  userIds: [currentUser.id],
+                  count: 1,
+                });
+              }
+
+              return {
+                ...msg,
+                reactions: currentReactions,
+              };
+            }
+            return msg;
+          });
+
+          return {
+            ...thread,
+            messages: updatedMessages,
+          };
+        }
+        return thread;
+      })
+    );
+  };
+
   // Report message handler
   const handleReportMessage = (
     threadId: string,
@@ -1018,6 +1073,7 @@ function AppContent() {
                 onToggleFollow={handleToggleFollow}
                 onToggleLockChat={handleToggleLockChat}
                 onClearChat={handleClearChatThread}
+                onToggleReaction={handleToggleMessageReaction}
               />
             )}
 
