@@ -145,6 +145,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onRerunPermissionOnboarding,
 }) => {
   const { navState, setSettingsSection, goBack, closeSettings, setIsEditProfileOpen } = useNavigation();
+  const { t, languageObj } = useTranslation();
   const currentSection: SettingsSection = (navState.settingsSection || initialSection || 'main') as SettingsSection;
   const setCurrentSection = (sec: SettingsSection) => setSettingsSection(sec);
 
@@ -223,8 +224,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
     if (onLogout) onLogout();
   };
-
-  const { t, languageObj } = useTranslation();
 
   const maskMobile = (phone?: string) => {
     if (!phone) return '+1 (555) 234-5678';

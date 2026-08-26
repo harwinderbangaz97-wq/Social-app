@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, User } from '../types';
 import { UniversalReportModal } from './UniversalReportModal';
+import { useTranslation } from '../context/LanguageContext';
 
 interface FeedCardProps {
   post: Post;
@@ -61,6 +62,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
   onUpdateCaption,
   onShowToast,
 }) => {
+  const { t } = useTranslation();
   const [isSaved, setIsSaved] = useState(post.isSaved || false);
   const [commentInput, setCommentInput] = useState('');
   const [showLikeOverlay, setShowLikeOverlay] = useState(false);
@@ -366,7 +368,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                         isSaved ? 'fill-[#5B9DFF] text-[#5B9DFF]' : 'text-slate-500'
                       }`}
                     />
-                    <span>{isSaved ? 'Remove from Saved' : 'Save Post'}</span>
+                    <span>{isSaved ? t('feed_remove_saved') : t('feed_save_button')}</span>
                   </button>
 
                   {/* Copy Link */}
@@ -376,7 +378,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                     className="w-full px-3 py-2.5 rounded-xl text-left text-[13.5px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition"
                   >
                     <Link2 className="w-4.5 h-4.5 text-slate-500" />
-                    <span>Copy Link</span>
+                    <span>{t('feed_copy_link')}</span>
                   </button>
 
                   {/* Share Post */}
@@ -389,7 +391,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                     className="w-full px-3 py-2.5 rounded-xl text-left text-[13.5px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition"
                   >
                     <Share2 className="w-4.5 h-4.5 text-slate-500" />
-                    <span>Share to...</span>
+                    <span>{t('feed_share_to')}</span>
                   </button>
 
                   {/* Post Notifications */}
@@ -405,8 +407,8 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                     )}
                     <span>
                       {notificationsEnabled
-                        ? 'Turn Off Notifications'
-                        : 'Turn On Notifications'}
+                        ? t('feed_turn_off_notifications')
+                        : t('feed_turn_on_notifications')}
                     </span>
                   </button>
 
@@ -424,7 +426,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                         className="w-full px-3 py-2.5 rounded-xl text-left text-[13.5px] font-bold text-slate-700 hover:bg-blue-50 hover:text-[#5B9DFF] flex items-center gap-2.5 transition"
                       >
                         <Edit3 className="w-4.5 h-4.5 text-[#5B9DFF]" />
-                        <span>Edit Caption</span>
+                        <span>{t('feed_edit_caption')}</span>
                       </button>
 
                       <button
@@ -436,7 +438,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                         className="w-full px-3 py-2.5 rounded-xl text-left text-[13.5px] font-bold text-rose-500 hover:bg-rose-50 flex items-center gap-2.5 transition"
                       >
                         <Trash2 className="w-4.5 h-4.5" />
-                        <span>Delete Post</span>
+                        <span>{t('feed_delete_post')}</span>
                       </button>
                     </>
                   ) : (
@@ -449,7 +451,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                         className="w-full px-3 py-2.5 rounded-xl text-left text-[13.5px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition"
                       >
                         <EyeOff className="w-4.5 h-4.5 text-slate-500" />
-                        <span>Not Interested / Hide</span>
+                        <span>{t('feed_hide_post')}</span>
                       </button>
 
                       {/* Report Post */}
@@ -462,7 +464,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                         className="w-full px-3 py-2.5 rounded-xl text-left text-[13.5px] font-bold text-rose-500 hover:bg-rose-50 flex items-center gap-2.5 transition"
                       >
                         <Flag className="w-4.5 h-4.5 text-rose-500" />
-                        <span>Report Post</span>
+                        <span>{t('feed_report_post')}</span>
                       </button>
                     </>
                   )}
@@ -623,14 +625,14 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                   e.stopPropagation();
                   onShareClick(post);
                 }}
-                aria-label="Share post"
+                aria-label={t('feed_share_button')}
                 className="flex flex-col items-center gap-0.5 cursor-pointer group select-none touch-manipulation focus:outline-none"
               >
                 <div className="w-11 h-11 rounded-full bg-black/40 hover:bg-black/55 text-white border border-white/30 backdrop-blur-md flex items-center justify-center transition-all shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
                   <Share2 className="w-5.5 h-5.5 text-white transition-transform group-hover:scale-110 drop-shadow-sm" />
                 </div>
                 <span className="text-[12px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
-                  Share
+                  {t('feed_share_button')}
                 </span>
               </motion.button>
             </div>
@@ -650,7 +652,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 onChange={(e) => setEditedCaption(e.target.value)}
                 rows={2}
                 className="w-full text-[14.5px] p-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-[#5B9DFF] focus:bg-white"
-                placeholder="Edit your post caption..."
+                placeholder={t('feed_edit_caption')}
                 autoFocus
               />
               <div className="flex items-center justify-end gap-2">
@@ -659,14 +661,14 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                   onClick={() => setIsEditingCaption(false)}
                   className="px-3.5 py-1.5 rounded-full bg-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-200"
                 >
-                  Cancel
+                  {t('common_cancel')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-1.5 rounded-full bg-[#5B9DFF] text-white text-xs font-bold flex items-center gap-1 hover:bg-blue-600 shadow-sm"
                 >
                   <Check className="w-4 h-4 stroke-[3]" />
-                  Save
+                  {t('common_save')}
                 </button>
               </div>
             </form>
@@ -704,7 +706,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                     }}
                     className="inline-flex items-center gap-0.5 text-[13px] font-bold text-slate-400 hover:text-[#5B9DFF] ml-1.5 transition cursor-pointer"
                   >
-                    <span>more</span>
+                    <span>{t('common_read_more')}</span>
                   </button>
                 )}
               </div>
@@ -720,7 +722,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                     }}
                     className="text-[13px] font-semibold text-slate-400 hover:text-[#5B9DFF] transition-colors cursor-pointer"
                   >
-                    View all {post.comments.length} comments
+                    {t('feed_comments_view_all', { count: post.comments.length })}
                   </button>
                 </div>
               )}
@@ -745,7 +747,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 type="text"
                 value={commentInput}
                 onChange={(e) => setCommentInput(e.target.value)}
-                placeholder="Add a comment..."
+                placeholder={t('feed_write_comment_placeholder')}
                 className="w-full text-[14.5px] h-11.5 pl-4 pr-11 rounded-full neu-inset text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/40"
               />
               {commentInput.trim() && (

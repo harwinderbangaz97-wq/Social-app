@@ -25,6 +25,7 @@ import {
 import { User } from '../types';
 import {
   AutoDeleteDuration,
+  MuteDuration,
   UserChatSettings,
   getIndividualChatSettings,
   saveIndividualChatSettings,
@@ -116,9 +117,28 @@ export const IndividualUserMenu: React.FC<IndividualUserMenuProps> = ({
     }
   };
 
+  const handleUpdateMuteDuration = (duration: MuteDuration) => {
+    const updated = saveIndividualChatSettings(user.id, { muteDuration: duration });
+    setChatSettings(updated);
+    if (onShowToast) {
+      if (duration === 'off') {
+        onShowToast(`Unmuted notifications from ${user.name}`);
+      } else if (duration === '1h') {
+        onShowToast(`Muted ${user.name} for 1 hour`);
+      } else if (duration === '8h') {
+        onShowToast(`Muted ${user.name} for 8 hours`);
+      } else if (duration === '24h') {
+        onShowToast(`Muted ${user.name} for 24 hours`);
+      } else if (duration === 'permanent') {
+        onShowToast(`Muted ${user.name} permanently`);
+      }
+    }
+  };
+
   const handleToggleMute = () => {
     const newMuted = !chatSettings.isMuted;
-    const updated = saveIndividualChatSettings(user.id, { isMuted: newMuted });
+    const duration: MuteDuration = newMuted ? 'permanent' : 'off';
+    const updated = saveIndividualChatSettings(user.id, { isMuted: newMuted, muteDuration: duration });
     setChatSettings(updated);
     if (onShowToast) {
       onShowToast(newMuted ? `Muted notifications from ${user.name}` : `Unmuted notifications from ${user.name}`);
@@ -310,11 +330,21 @@ export const IndividualUserMenu: React.FC<IndividualUserMenuProps> = ({
                     <div className={`w-8.5 h-8.5 rounded-full neu-raised flex items-center justify-center ${chatSettings.isMuted ? 'text-rose-500' : 'text-slate-600'}`}>
                       {chatSettings.isMuted ? <BellOff className="w-4.5 h-4.5 text-rose-500" /> : <Bell className="w-4.5 h-4.5" />}
                     </div>
-                    <span>Notification</span>
+                    <span>Mute / Notifications</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-400">
                     <span className="text-[12px] font-medium text-slate-500">
-                      {chatSettings.isMuted ? 'Muted' : chatSettings.soundEnabled ? 'Sound On' : 'Sound Off'}
+                      {chatSettings.isMuted
+                        ? chatSettings.muteDuration === '1h'
+                          ? 'Muted (1h)'
+                          : chatSettings.muteDuration === '8h'
+                          ? 'Muted (8h)'
+                          : chatSettings.muteDuration === '24h'
+                          ? 'Muted (24h)'
+                          : 'Muted'
+                        : chatSettings.soundEnabled
+                        ? 'Sound On'
+                        : 'Sound Off'}
                     </span>
                     <ChevronRight className="w-4.5 h-4.5 text-slate-400" />
                   </div>
@@ -487,32 +517,46 @@ export const IndividualUserMenu: React.FC<IndividualUserMenuProps> = ({
                   </p>
                 </div>
 
-                {/* Mute Setting */}
-                <button
-                  type="button"
-                  onClick={handleToggleMute}
-                  className={`w-full p-3.5 rounded-[20px] text-left transition-all flex items-center justify-between cursor-pointer ${
-                    chatSettings.isMuted
-                      ? 'neu-inset border border-rose-200 bg-rose-50/30'
-                      : 'neu-raised hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center ${chatSettings.isMuted ? 'bg-rose-500 text-white' : 'neu-inset text-slate-600'}`}>
-                      {chatSettings.isMuted ? <BellOff className="w-4.5 h-4.5" /> : <Bell className="w-4.5 h-4.5" />}
-                    </div>
-                    <div>
-                      <h4 className="text-[14px] font-bold text-slate-800">Mute</h4>
-                      <p className="text-[11.5px] text-slate-500">
-                        {chatSettings.isMuted ? 'Notifications are muted for this chat' : 'Receive push alerts for new messages'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className={`w-11 h-6.5 rounded-full p-0.5 transition-colors ${chatSettings.isMuted ? 'bg-rose-500' : 'bg-slate-200'}`}>
-                    <div className={`w-5.5 h-5.5 rounded-full bg-white shadow-md transform transition-transform ${chatSettings.isMuted ? 'translate-x-4.5' : 'translate-x-0'}`} />
-                  </div>
-                </button>
+                {/* Mute Duration Options */}
+                <div className="space-y-2">
+                  <p className="text-[12px] font-bold text-slate-700 px-1">Mute Notifications</p>
+                  {[
+                    { id: 'off', label: 'Off (Unmuted)', desc: 'Receive all notifications and alerts' },
+                    { id: '1h', label: '1 Hour', desc: 'Mute alerts for the next hour' },
+                    { id: '8h', label: '8 Hours', desc: 'Mute alerts for 8 hours' },
+                    { id: '24h', label: '24 Hours', desc: 'Mute alerts for 24 hours' },
+                    { id: 'permanent', label: 'Permanently', desc: 'Mute until you turn back on' },
+                  ].map((opt) => {
+                    const isSelected = chatSettings.muteDuration === opt.id || (!chatSettings.isMuted && opt.id === 'off');
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleUpdateMuteDuration(opt.id as MuteDuration)}
+                        className={`w-full p-3.5 rounded-[20px] text-left transition-all flex items-center justify-between cursor-pointer ${
+                          isSelected
+                            ? 'neu-inset border border-[#5B9DFF]/60 bg-blue-50/40'
+                            : 'neu-raised hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isSelected ? 'bg-[#5B9DFF] text-white' : 'neu-inset text-slate-600'}`}>
+                            {opt.id === 'off' ? <Bell className="w-4.5 h-4.5" /> : <BellOff className="w-4.5 h-4.5" />}
+                          </div>
+                          <div>
+                            <h4 className="text-[14px] font-bold text-slate-800">{opt.label}</h4>
+                            <p className="text-[11.5px] text-slate-500">{opt.desc}</p>
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <div className="w-6 h-6 rounded-full bg-[#5B9DFF] text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 {/* Sound Setting */}
                 <button

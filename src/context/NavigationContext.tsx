@@ -336,6 +336,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   // Actions
   const navigateToTab = useCallback(
     (tab: TabType) => {
+      window.scrollTo({ top: 0, behavior: 'instant' });
       setNavState((prev) => {
         if (prev.tab === tab && prev.profileHistory.length === 0 && prev.activeChatUserId === null) {
           return prev;
@@ -364,6 +365,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   const openUserProfile = useCallback(
     (user: User, fromTab?: TabType) => {
       if (!user) return;
+      window.scrollTo({ top: 0, behavior: 'instant' });
       setNavState((prev) => {
         const currentUserId = currentUser?.id || CURRENT_USER.id;
         const isSelf = user.id === currentUserId;
@@ -404,6 +406,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
 
   const openChatThread = useCallback(
     (userId: string) => {
+      window.scrollTo({ top: 0, behavior: 'instant' });
       setNavState((prev) => ({
         ...prev,
         tab: 'chat',

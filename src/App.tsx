@@ -28,6 +28,7 @@ import {
   submitMessageReport,
   updateThreadAfterMessageDeletion,
 } from './data/messagePrivacyService';
+import { getIndividualChatSettings } from './services/individualChatSettingsService';
 import { TopAppBar } from './components/TopAppBar';
 import { StoriesSection } from './components/StoriesSection';
 import { FeedCard } from './components/FeedCard';
@@ -565,7 +566,7 @@ function AppContent() {
 
   // Open Direct Chat with user
   const handleOpenDirectChat = (user: User) => {
-    const existing = chatThreads.find((t) => t.participant.id === user.id);
+    const existing = chatThreads.find((t) => t.participant?.id === user.id);
     if (!existing) {
       const newThread: ChatThread = {
         id: `chat_${user.id}`,
@@ -583,6 +584,67 @@ function AppContent() {
     }
     navigateToTab('chat');
     openChatThread(user.id);
+  };
+
+  const handleCreateGroup = (
+    name: string,
+    description: string,
+    avatar: string,
+    memberIds: string[]
+  ) => {
+    const allGroupMembers = [
+      currentUser,
+      ...users.filter((u) => memberIds.includes(u.id)),
+    ];
+    const newGroupThread: ChatThread = {
+      id: `group_${Date.now()}`,
+      isGroup: true,
+      groupName: name,
+      groupAvatar: avatar,
+      groupDescription: description,
+      groupMembers: allGroupMembers,
+      groupAdminIds: [currentUser.id],
+      lastMessage: {
+        text: 'Group created. Say hello! 👋',
+        timestamp: 'Just now',
+        isRead: true,
+        isOwn: true,
+        senderName: currentUser.name,
+      },
+      unreadCount: 0,
+      messages: [],
+    };
+    setChatThreads((prev) => [newGroupThread, ...prev]);
+    navigateToTab('chat');
+    openChatThread(newGroupThread.id);
+  };
+
+  const handleUpdateGroup = (
+    groupId: string,
+    updates: { name?: string; description?: string; avatar?: string; memberIds?: string[] }
+  ) => {
+    setChatThreads((prev) =>
+      prev.map((t) => {
+        if (t.id === groupId && t.isGroup) {
+          const updatedMembers = updates.memberIds
+            ? [currentUser, ...users.filter((u) => updates.memberIds?.includes(u.id))]
+            : t.groupMembers;
+          return {
+            ...t,
+            groupName: updates.name !== undefined ? updates.name : t.groupName,
+            groupDescription: updates.description !== undefined ? updates.description : t.groupDescription,
+            groupAvatar: updates.avatar !== undefined ? updates.avatar : t.groupAvatar,
+            groupMembers: updatedMembers,
+          };
+        }
+        return t;
+      })
+    );
+  };
+
+  const handleLeaveGroup = (groupId: string) => {
+    setChatThreads((prev) => prev.filter((t) => t.id !== groupId));
+    closeChatThread();
   };
 
   // Handle Notification Item Tap: Mark only that specific notification as read
@@ -626,13 +688,15 @@ function AppContent() {
     handleOpenDirectChat(user);
   };
 
-  // Send Message in Chat (Supports Normal, Immediate Vanish, and Delete After Seen)
+  // Send Message in Chat (Supports Normal, Immediate Vanish, Delete After Seen, and Forwarded messages)
   const handleSendMessage = (
     receiverId: string,
     text?: string,
     imageUrl?: string,
     voiceNote?: VoiceNoteData,
-    privacyMode: MessagePrivacyMode = 'normal'
+    privacyMode: MessagePrivacyMode = 'normal',
+    isForwarded?: boolean,
+    forwardedFrom?: string
   ) => {
     const newMsg: Message = {
       id: `m_${Date.now()}`,
@@ -646,30 +710,88 @@ function AppContent() {
       privacyMode,
       createdAt: Date.now(),
       disappearingSeconds: privacyMode === 'immediate' ? 5 : (privacyMode === 'after_seen' ? 6 : undefined),
+      isForwarded,
+      forwardedFrom,
     };
 
-    setChatThreads((prevThreads) =>
-      prevThreads.map((thread) => {
-        if (thread.participant.id === receiverId || thread.id === receiverId) {
-          return {
-            ...thread,
-            lastMessage: {
-              text: voiceNote ? `Voice note (0:${voiceNote.durationSeconds < 10 ? '0' : ''}${voiceNote.durationSeconds})` : (text || 'Photo attachment'),
-              imageUrl,
-              isVoice: !!voiceNote,
-              voiceDuration: voiceNote?.durationSeconds,
-              timestamp: 'Just now',
-              isRead: true,
-              isOwn: true,
-            },
-            messages: [...thread.messages, newMsg],
-          };
-        }
-        return thread;
-      })
-    );
+    setChatThreads((prevThreads) => {
+      const existing = prevThreads.find(
+        (t) => t.participant?.id === receiverId || t.id === receiverId
+      );
+      if (existing) {
+        return prevThreads.map((thread) => {
+          if (thread.participant?.id === receiverId || thread.id === receiverId) {
+            return {
+              ...thread,
+              lastMessage: {
+                text: voiceNote
+                  ? `Voice note (0:${voiceNote.durationSeconds < 10 ? '0' : ''}${voiceNote.durationSeconds})`
+                  : (text || 'Photo attachment'),
+                imageUrl,
+                isVoice: !!voiceNote,
+                voiceDuration: voiceNote?.durationSeconds,
+                timestamp: 'Just now',
+                isRead: true,
+                isOwn: true,
+              },
+              messages: [...thread.messages, newMsg],
+            };
+          }
+          return thread;
+        });
+      }
 
-    // Simulate natural reply after 1.4 seconds
+      // If thread didn't exist yet, create it from MOCK_USERS / users
+      const targetUser =
+        users.find((u) => u.id === receiverId) ||
+        MOCK_USERS.find((u) => u.id === receiverId) || {
+          id: receiverId,
+          name: 'Contact',
+          username: 'contact',
+          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+          followersCount: 0,
+          followingCount: 0,
+          postsCount: 0,
+          isFollowing: false,
+        };
+
+      const newThread: ChatThread = {
+        id: `chat_${receiverId}`,
+        participant: targetUser,
+        lastMessage: {
+          text: voiceNote
+            ? `Voice note (0:${voiceNote.durationSeconds < 10 ? '0' : ''}${voiceNote.durationSeconds})`
+            : (text || 'Photo attachment'),
+          imageUrl,
+          isVoice: !!voiceNote,
+          voiceDuration: voiceNote?.durationSeconds,
+          timestamp: 'Just now',
+          isRead: true,
+          isOwn: true,
+        },
+        unreadCount: 0,
+        messages: [newMsg],
+      };
+
+      return [newThread, ...prevThreads];
+    });
+
+    // Simulate participant typing indicator after 350ms, then deliver reply after typing completes
+    setTimeout(() => {
+      setChatThreads((prevThreads) =>
+        prevThreads.map((thread) => {
+          if (thread.participant?.id === receiverId || thread.id === receiverId) {
+            return {
+              ...thread,
+              isTyping: true,
+            };
+          }
+          return thread;
+        })
+      );
+    }, 350);
+
+    // Natural processing & typing duration (2.1 seconds)
     setTimeout(() => {
       const isVoiceResponse = !!voiceNote && Math.random() > 0.4;
 
@@ -729,11 +851,30 @@ function AppContent() {
         };
       }
 
-      setChatThreads((prevThreads) =>
-        prevThreads.map((thread) => {
-          if (thread.participant.id === receiverId || thread.id === receiverId) {
+      setChatThreads((prevThreads) => {
+        const chatSettings = getIndividualChatSettings(receiverId);
+        const isMuted = chatSettings.isMuted;
+        const targetThread = prevThreads.find((t) => t.participant?.id === receiverId || t.id === receiverId);
+
+        if (!isMuted && targetThread) {
+          const notifItem: NotificationItem = {
+            id: `notif_msg_${Date.now()}`,
+            type: 'message',
+            user: targetThread.isGroup ? { id: targetThread.id, name: targetThread.groupName || 'Group', avatar: targetThread.groupAvatar || '', username: 'group', postsCount: 0, followersCount: 0, followingCount: 0, isOnline: true, isFollowing: false } : targetThread.participant!,
+            text: `sent a message: "${lastMsgPreview.text}"`,
+            timestamp: 'Just now',
+            read: false,
+            chatUserId: receiverId,
+          };
+          setNotifications((prev) => [notifItem, ...prev]);
+        }
+
+        return prevThreads.map((thread) => {
+          if (thread.participant?.id === receiverId || thread.id === receiverId) {
             return {
               ...thread,
+              isTyping: false,
+              unreadCount: isMuted ? thread.unreadCount : thread.unreadCount + 1,
               lastMessage: {
                 text: lastMsgPreview.text,
                 isVoice: lastMsgPreview.isVoice,
@@ -746,16 +887,16 @@ function AppContent() {
             };
           }
           return thread;
-        })
-      );
-    }, 1400);
+        });
+      });
+    }, 2200);
   };
 
   // Delete message for everyone in a thread
   const handleDeleteMessage = (threadId: string, messageId: string) => {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant.id === threadId) {
+        if (thread.id === threadId || thread.participant?.id === threadId) {
           return updateThreadAfterMessageDeletion(thread, messageId);
         }
         return thread;
@@ -767,7 +908,7 @@ function AppContent() {
   const handleMarkMessageSeen = (threadId: string, messageId: string) => {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant.id === threadId) {
+        if (thread.id === threadId || thread.participant?.id === threadId) {
           const updatedMessages = thread.messages.map((m) => {
             if (m.id === messageId && !m.isRead) {
               return {
@@ -789,41 +930,84 @@ function AppContent() {
     );
   };
 
-  // Toggle reaction on a message (like 👍, ❤️, 😂, etc.)
+  // Toggle or update reaction on a message (enforces 1 reaction per user per message, allows changing anytime or tapping same to remove)
   const handleToggleMessageReaction = (threadId: string, messageId: string, emoji: string) => {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant.id === threadId) {
+        if (thread.id === threadId || thread.participant?.id === threadId) {
           const updatedMessages = thread.messages.map((msg) => {
             if (msg.id === messageId) {
-              const currentReactions = msg.reactions ? [...msg.reactions] : [];
-              const existingIdx = currentReactions.findIndex((r) => r.emoji === emoji);
+              let currentReactions = msg.reactions ? [...msg.reactions] : [];
 
-              if (existingIdx >= 0) {
-                const existing = currentReactions[existingIdx];
-                const hasUserReacted = existing.userIds.includes(currentUser.id);
-                let nextUserIds: string[];
-                if (hasUserReacted) {
-                  nextUserIds = existing.userIds.filter((id) => id !== currentUser.id);
-                } else {
-                  nextUserIds = [...existing.userIds, currentUser.id];
-                }
+              // Check what reaction the user currently has on this message (if any)
+              const existingReactionIndex = currentReactions.findIndex((r) =>
+                r.userIds.includes(currentUser.id)
+              );
 
-                if (nextUserIds.length === 0) {
-                  currentReactions.splice(existingIdx, 1);
+              if (existingReactionIndex >= 0) {
+                const currentReaction = currentReactions[existingReactionIndex];
+                if (currentReaction.emoji === emoji) {
+                  // User clicked the exact same reaction they already had -> Remove it (toggle off)
+                  const updatedUserIds = currentReaction.userIds.filter((id) => id !== currentUser.id);
+                  if (updatedUserIds.length === 0) {
+                    currentReactions.splice(existingReactionIndex, 1);
+                  } else {
+                    currentReactions[existingReactionIndex] = {
+                      ...currentReaction,
+                      userIds: updatedUserIds,
+                      count: updatedUserIds.length,
+                    };
+                  }
                 } else {
-                  currentReactions[existingIdx] = {
-                    emoji,
-                    userIds: nextUserIds,
-                    count: nextUserIds.length,
-                  };
+                  // User selected a different emoji -> Remove from old reaction, add to/create new emoji reaction
+                  // 1. Remove user from previous emoji
+                  const oldUserIds = currentReaction.userIds.filter((id) => id !== currentUser.id);
+                  if (oldUserIds.length === 0) {
+                    currentReactions.splice(existingReactionIndex, 1);
+                  } else {
+                    currentReactions[existingReactionIndex] = {
+                      ...currentReaction,
+                      userIds: oldUserIds,
+                      count: oldUserIds.length,
+                    };
+                  }
+
+                  // 2. Add user to new emoji reaction
+                  const targetEmojiIndex = currentReactions.findIndex((r) => r.emoji === emoji);
+                  if (targetEmojiIndex >= 0) {
+                    const targetReaction = currentReactions[targetEmojiIndex];
+                    const newUserIds = Array.from(new Set([...targetReaction.userIds, currentUser.id]));
+                    currentReactions[targetEmojiIndex] = {
+                      ...targetReaction,
+                      userIds: newUserIds,
+                      count: newUserIds.length,
+                    };
+                  } else {
+                    currentReactions.push({
+                      emoji,
+                      userIds: [currentUser.id],
+                      count: 1,
+                    });
+                  }
                 }
               } else {
-                currentReactions.push({
-                  emoji,
-                  userIds: [currentUser.id],
-                  count: 1,
-                });
+                // User had no active reaction on this message yet -> Add reaction
+                const targetEmojiIndex = currentReactions.findIndex((r) => r.emoji === emoji);
+                if (targetEmojiIndex >= 0) {
+                  const targetReaction = currentReactions[targetEmojiIndex];
+                  const newUserIds = Array.from(new Set([...targetReaction.userIds, currentUser.id]));
+                  currentReactions[targetEmojiIndex] = {
+                    ...targetReaction,
+                    userIds: newUserIds,
+                    count: newUserIds.length,
+                  };
+                } else {
+                  currentReactions.push({
+                    emoji,
+                    userIds: [currentUser.id],
+                    count: 1,
+                  });
+                }
               }
 
               return {
@@ -866,7 +1050,7 @@ function AppContent() {
   const handleClearChatThread = (participantUserId: string) => {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.participant.id === participantUserId || thread.id === participantUserId) {
+        if (thread.participant?.id === participantUserId || thread.id === participantUserId) {
           return {
             ...thread,
             messages: [],
@@ -910,6 +1094,50 @@ function AppContent() {
     openStoryViewer(0);
   };
 
+  // Toggle Heart Reaction on a Story
+  const handleToggleLikeStory = (storyId: string, isLiked: boolean) => {
+    setStories((prevStories) =>
+      prevStories.map((story) => {
+        if (story.id === storyId) {
+          const currentCount = story.likesCount ?? 0;
+          const nextCount = isLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
+          const currentLikedBy = story.likedBy || [];
+          const nextLikedBy = isLiked
+            ? [currentUser, ...currentLikedBy.filter((u) => u.id !== currentUser.id)]
+            : currentLikedBy.filter((u) => u.id !== currentUser.id);
+
+          return {
+            ...story,
+            likesCount: nextCount,
+            isLiked,
+            likedBy: nextLikedBy,
+          };
+        }
+        return story;
+      })
+    );
+
+    // If liking another user's story, create a notification
+    const targetStory = stories.find((s) => s.id === storyId);
+    if (
+      isLiked &&
+      targetStory &&
+      targetStory.userId !== currentUser.id &&
+      targetStory.user?.id !== currentUser.id
+    ) {
+      const notif: NotificationItem = {
+        id: `notif_story_like_${Date.now()}`,
+        type: 'story_like',
+        user: currentUser,
+        text: 'liked your story ❤️',
+        timestamp: 'Just now',
+        read: false,
+        previewImage: targetStory.mediaUrl,
+      };
+      setNotifications((prev) => [notif, ...prev]);
+    }
+  };
+
   // Profile data resolution from navigation history
   const currentProfileUser = navState.profileHistory && navState.profileHistory.length > 0
     ? navState.profileHistory[navState.profileHistory.length - 1]
@@ -934,7 +1162,7 @@ function AppContent() {
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
   const unreadMessagesCount = chatThreads
-    .filter((t) => !(isChatLockEnabled && lockedChatUserIds.includes(t.participant.id)))
+    .filter((t) => !(isChatLockEnabled && lockedChatUserIds.includes(t.participant?.id)))
     .reduce((acc, t) => acc + t.unreadCount, 0);
 
   const handleLogout = () => {
@@ -948,6 +1176,49 @@ function AppContent() {
     setIsAuthenticated(false);
     showToast('Logged out successfully');
   };
+
+  // Stop background media and prevent background scrolling when navigating to another screen or opening overlays
+  useEffect(() => {
+    const mediaEls = document.querySelectorAll('video, audio');
+    mediaEls.forEach((el) => {
+      try {
+        (el as HTMLMediaElement).pause();
+      } catch {
+        // ignore
+      }
+    });
+
+    const isOverlayOpen =
+      activeTab === 'chat' ||
+      navState.selectedStoryIndex !== null ||
+      navState.activeCommentPost !== null ||
+      navState.activeSharePost !== null ||
+      navState.isNotificationOpen ||
+      navState.isSettingsOpen ||
+      navState.profileHistory.length > 0;
+
+    if (isOverlayOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [
+    activeTab,
+    navState.activeChatUserId,
+    navState.selectedStoryIndex,
+    navState.activeCommentPost,
+    navState.activeSharePost,
+    navState.isNotificationOpen,
+    navState.isSettingsOpen,
+    navState.profileHistory.length,
+  ]);
 
   return (
     <>
@@ -1074,9 +1345,14 @@ function AppContent() {
                 onToggleLockChat={handleToggleLockChat}
                 onClearChat={handleClearChatThread}
                 onToggleReaction={handleToggleMessageReaction}
+                onCreateGroup={handleCreateGroup}
+                onUpdateGroup={handleUpdateGroup}
+                onLeaveGroup={handleLeaveGroup}
+                allUsers={users}
               />
             )}
 
+            
             {/* Tab 5: Profile */}
             {activeTab === 'profile' && (
               <ProfileView
@@ -1127,6 +1403,7 @@ function AppContent() {
                 closeStoryViewer();
               }}
               onUserClick={handleOpenProfile}
+              onToggleLike={handleToggleLikeStory}
             />
           )}
 

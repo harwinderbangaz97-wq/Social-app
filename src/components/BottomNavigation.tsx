@@ -99,6 +99,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
             </motion.button>
           </div>
 
+          
           {/* 4. Chat Button */}
           <motion.button
             id="nav-chat-btn"

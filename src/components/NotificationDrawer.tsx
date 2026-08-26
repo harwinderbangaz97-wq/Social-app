@@ -3,6 +3,7 @@ import {
   X,
   ThumbsUp,
   ThumbsDown,
+  Heart,
   UserPlus,
   MessageCircle,
   MessageSquare,
@@ -100,6 +101,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                   switch (notif.type) {
                     case 'like':
                       return <ThumbsUp className="w-3 h-3 text-[#5B9DFF] fill-[#5B9DFF]" />;
+                    case 'story_like':
+                      return <Heart className="w-3 h-3 text-rose-500 fill-rose-500" />;
                     case 'dislike':
                       return <ThumbsDown className="w-3 h-3 text-rose-500 fill-rose-500" />;
                     case 'safety_removal':

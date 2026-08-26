@@ -90,6 +90,10 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
       timestamp: 'Just now',
       isSeen: false,
       caption: caption.trim() || undefined,
+      likesCount: 0,
+      isLiked: false,
+      likedBy: [],
+      viewsCount: 1,
     };
 
     setTimeout(() => {

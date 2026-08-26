@@ -4,6 +4,7 @@ import {
   Send,
   Image as ImageIcon,
   Camera,
+  Check,
   CheckCheck,
   MoreVertical,
   X,
@@ -11,7 +12,7 @@ import {
   Trash2,
   Sparkles,
   Search,
-  Lock,
+  Lock, Globe,
   Unlock,
   EyeOff,
   ShieldCheck,
@@ -26,20 +27,34 @@ import {
   Info,
   Smile,
   Plus,
+  Forward,
+  Bell,
+  BellOff,
+  Users as UsersIcon,
+  UserPlus,
+  Crown,
+  Settings,
+  Edit3,
+  Megaphone,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, ChatThread, Message, VoiceNoteData, MessagePrivacyMode, MessageReportReason } from '../types';
+import { MOCK_USERS } from '../data/mockData';
 import { VoiceMessageBubble } from './VoiceMessageBubble';
 import { ChatWallpaperModal, ChatWallpaperSettings } from './ChatWallpaperModal';
 import { DeleteMessageConfirmModal } from './DeleteMessageConfirmModal';
 import { IndividualUserMenu } from './IndividualUserMenu';
 import { UniversalReportModal } from './UniversalReportModal';
+import { CreateGroupModal } from './CreateGroupModal';
+import { GroupInfoModal } from './GroupInfoModal';
+import { CommunityAdminSettingsModal } from './CommunityAdminSettingsModal';
+import { CommunityChannelModal } from './CommunityChannelModal';
 import { CHAT_WALLPAPERS } from '../data/wallpapers';
 import { useNavigation } from '../context/NavigationContext';
 import { usePermissionAndMedia } from '../context/PermissionAndMediaContext';
 import { audioRecorder } from '../services/audioRecorderService';
 import { validateMessageDeletion, getMessagePrivacySettings } from '../data/messagePrivacyService';
-import { getIndividualChatSettings } from '../services/individualChatSettingsService';
+import { getIndividualChatSettings, saveIndividualChatSettings } from '../services/individualChatSettingsService';
 
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
 export const MORE_REACTIONS = [
@@ -60,7 +75,9 @@ interface ChatViewProps {
     text?: string,
     imageUrl?: string,
     voiceNote?: VoiceNoteData,
-    privacyMode?: MessagePrivacyMode
+    privacyMode?: MessagePrivacyMode,
+    isForwarded?: boolean,
+    forwardedFrom?: string
   ) => void;
   onDeleteMessage?: (threadId: string, messageId: string) => void;
   onReportMessage?: (
@@ -80,6 +97,10 @@ interface ChatViewProps {
   onToggleFollow?: (userId: string) => void;
   onToggleLockChat?: (userId: string) => void;
   onClearChat?: (userId: string) => void;
+  onCreateGroup?: (name: string, description: string, avatar: string, memberIds: string[]) => void;
+  onUpdateGroup?: (groupId: string, updates: { name?: string; description?: string; avatar?: string; memberIds?: string[] }) => void;
+  onLeaveGroup?: (groupId: string) => void;
+  allUsers?: User[];
 }
 
 const CHAT_SAMPLE_IMAGES = [
@@ -207,6 +228,21 @@ const MessageBubbleItem: React.FC<{
             : 'bg-white/95 backdrop-blur-md text-slate-800 rounded-bl-sm border border-slate-200/80 shadow-xs'
         }`}
       >
+        {/* Sender Name in Group Chat */}
+        {!isOwn && msg.senderName && (
+          <span className="text-[10px] font-bold text-blue-600 mb-1 block">
+            {msg.senderName}
+          </span>
+        )}
+
+        {/* Forwarded Message Indicator Badge */}
+        {msg.isForwarded && (
+          <div className="flex items-center gap-1 mb-1.5 opacity-80 text-[10px] font-medium italic select-none">
+            <Forward className="w-3 h-3" />
+            <span>Forwarded{msg.forwardedFrom ? ` from ${msg.forwardedFrom}` : ''}</span>
+          </div>
+        )}
+
         {/* Privacy Vanishing Status Badge */}
         {msg.privacyMode === 'immediate' && (
           <div className="flex items-center gap-1 mb-1.5 px-1.5 py-0.5 rounded-full bg-black/20 text-[10px] font-bold w-fit">
@@ -345,6 +381,73 @@ const MessageBubbleItem: React.FC<{
   );
 };
 
+// Animated Typing Indicator Bubble for the other participant
+const TypingIndicatorBubble: React.FC<{ participant: User }> = ({ participant }) => {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12, scale: 0.92 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.92 }}
+      transition={{ duration: 0.24, ease: 'easeOut' }}
+      className="flex items-end gap-2.5 max-w-[85%] select-none my-1.5"
+    >
+      {/* Participant Avatar */}
+      <div className="w-8 h-8 rounded-full neu-raised p-0.5 flex-shrink-0 mb-1">
+        <img
+          src={participant.avatar}
+          alt={participant.name}
+          className="w-full h-full rounded-full object-cover"
+        />
+      </div>
+
+      {/* Typing Bubble */}
+      <div className="flex flex-col items-start">
+        <div className="neu-flat-soft rounded-[22px] rounded-tl-sm px-4 py-3 bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-sm flex items-center gap-3">
+          {/* 3 Animated Bouncing Dots */}
+          <div className="flex items-center gap-1.5 py-0.5 px-0.5">
+            <motion.span
+              animate={{ y: [0, -6, 0], scale: [0.9, 1.25, 0.9] }}
+              transition={{
+                duration: 0.7,
+                repeat: Infinity,
+                ease: 'easeInOut',
+                delay: 0,
+              }}
+              className="w-2.5 h-2.5 rounded-full bg-[#5B9DFF] shadow-xs"
+            />
+            <motion.span
+              animate={{ y: [0, -6, 0], scale: [0.9, 1.25, 0.9] }}
+              transition={{
+                duration: 0.7,
+                repeat: Infinity,
+                ease: 'easeInOut',
+                delay: 0.2,
+              }}
+              className="w-2.5 h-2.5 rounded-full bg-[#5B9DFF] shadow-xs"
+            />
+            <motion.span
+              animate={{ y: [0, -6, 0], scale: [0.9, 1.25, 0.9] }}
+              transition={{
+                duration: 0.7,
+                repeat: Infinity,
+                ease: 'easeInOut',
+                delay: 0.4,
+              }}
+              className="w-2.5 h-2.5 rounded-full bg-[#5B9DFF] shadow-xs"
+            />
+          </div>
+
+          {/* Typing Label */}
+          <span className="text-[11px] font-semibold text-slate-600 italic tracking-tight">
+            {participant.name.split(' ')[0]} is typing...
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 export const ChatView: React.FC<ChatViewProps> = ({
   threads,
   currentUser,
@@ -365,6 +468,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onToggleFollow,
   onToggleLockChat,
   onClearChat,
+  onCreateGroup,
+  onUpdateGroup,
+  onLeaveGroup,
+  allUsers = [],
 }) => {
   const {
     navState,
@@ -386,6 +493,275 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const showThreadMenu = navState.chatMenuOpen;
   const setShowThreadMenu = setChatMenuOpen;
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeMainTab, setActiveMainTab] = useState<'messages' | 'communities'>('messages');
+
+    // Communities Tab State
+  const [communitySearchQuery, setCommunitySearchQuery] = useState('');
+  const [selectedCommunityCategory, setSelectedCommunityCategory] = useState<string>('All');
+  const [joinedCommunityIds, setJoinedCommunityIds] = useState<string[]>(['c1', 'c2']);
+  const [pendingJoinRequests, setPendingJoinRequests] = useState<string[]>([]);
+  const [joinRequestModalCommunity, setJoinRequestModalCommunity] = useState<any | null>(null);
+  const [selectedChannelCommunity, setSelectedChannelCommunity] = useState<any | null>(null);
+  const [joinRequestNote, setJoinRequestNote] = useState('');
+  const [localToast, setLocalToast] = useState<{ id: string; message: string; type?: 'success' | 'info' | 'warning' } | null>(null);
+
+  const triggerCommunityToast = (message: string, type: 'success' | 'info' | 'warning' = 'info') => {
+    if (onShowToast) {
+      onShowToast(message);
+    }
+    setLocalToast({ id: Date.now().toString(), message, type });
+    setTimeout(() => {
+      setLocalToast((curr) => (curr?.message === message ? null : curr));
+    }, 3500);
+  };
+
+  const handleToggleCommunityState = (community: any) => {
+    if (joinedCommunityIds.includes(community.id)) {
+      setJoinedCommunityIds((prev) => prev.filter((id) => id !== community.id));
+      triggerCommunityToast(`You left "${community.name}"`, 'info');
+    } else if (community.isPrivate) {
+      if (pendingJoinRequests.includes(community.id)) {
+        setPendingJoinRequests((prev) => prev.filter((id) => id !== community.id));
+        triggerCommunityToast(`Join request cancelled for "${community.name}"`, 'info');
+      } else {
+        setJoinRequestModalCommunity(community);
+        setJoinRequestNote('');
+      }
+    } else {
+      setJoinedCommunityIds((prev) => [...prev, community.id]);
+      triggerCommunityToast(`Joined "${community.name}" 🎉`, 'success');
+    }
+  };
+
+  const handleSendJoinRequest = () => {
+    if (!joinRequestModalCommunity) return;
+    const comm = joinRequestModalCommunity;
+    setPendingJoinRequests((prev) => [...prev, comm.id]);
+    setJoinRequestModalCommunity(null);
+    triggerCommunityToast(`Join request sent to admin (${comm.adminName}) for "${comm.name}" 📩`, 'success');
+  };
+
+  // Create Community Modal & Form State
+  const [isCreateCommunityOpen, setIsCreateCommunityOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createDesc, setCreateDesc] = useState('');
+  const [createCategory, setCreateCategory] = useState('Tech');
+  const [createIsPrivate, setCreateIsPrivate] = useState(false);
+  const [createGradient, setCreateGradient] = useState('from-indigo-500 to-blue-600');
+
+  // Owner Options / Manage Community Modal State
+  const [ownerManageCommunity, setOwnerManageCommunity] = useState<any | null>(null);
+  const [ownerActiveTab, setOwnerActiveTab] = useState<'edit' | 'requests' | 'broadcast' | 'danger'>('edit');
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editIsPrivate, setEditIsPrivate] = useState(false);
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+
+  // Admin Join Requests per Community
+  const [incomingJoinRequests, setIncomingJoinRequests] = useState<{ [communityId: string]: Array<{ id: string; name: string; note: string; timestamp: string }> }>({
+    c3: [
+      { id: 'req_1', name: 'Jordan Smith', note: 'Hi! Would love portfolio critiques.', timestamp: '10m ago' },
+      { id: 'req_2', name: 'Taylor Swift', note: 'UI designer looking for design system teardowns.', timestamp: '1h ago' },
+    ],
+  });
+
+  // Dynamic Communities State (c1 & c3 are owned by current user!)
+  const [communities, setCommunities] = useState<any[]>([
+    {
+      id: 'c1',
+      name: 'Tech Enthusiasts',
+      description: 'Discuss web dev, React 19, AI models, and modern frameworks.',
+      lastMessage: 'React Developer: Has anyone tried React 19 hooks yet?',
+      members: '12.5k',
+      isPrivate: false,
+      adminName: currentUser.name || 'You',
+      ownerId: currentUser.id,
+      category: 'Tech',
+      gradient: 'from-indigo-500 to-blue-600',
+      bgLight: 'bg-indigo-50',
+      borderLight: 'border-indigo-200/60',
+      badgeColor: 'bg-indigo-100 text-indigo-700',
+    },
+    {
+      id: 'c2',
+      name: 'Local Hikers & Explorers',
+      description: 'Share trail recommendations, gear tips, and organize weekend group climbs.',
+      lastMessage: 'Sarah: See you all at 8 AM tomorrow at the main trailhead!',
+      members: '3.2k',
+      isPrivate: false,
+      adminName: 'Sarah Jenkins',
+      category: 'Outdoors',
+      gradient: 'from-emerald-500 to-teal-600',
+      bgLight: 'bg-emerald-50',
+      borderLight: 'border-emerald-200/60',
+      badgeColor: 'bg-emerald-100 text-emerald-700',
+    },
+    {
+      id: 'c3',
+      name: 'UI/UX Designers Guild',
+      description: 'Private community for portfolio critiques, Figma tricks, and design systems.',
+      lastMessage: 'Alex (Admin): Weekly design system teardown begins in 1 hr.',
+      members: '4.8k',
+      isPrivate: true,
+      adminName: currentUser.name || 'You',
+      ownerId: currentUser.id,
+      category: 'Design',
+      gradient: 'from-purple-500 to-pink-600',
+      bgLight: 'bg-purple-50',
+      borderLight: 'border-purple-200/60',
+      badgeColor: 'bg-purple-100 text-purple-700',
+    },
+    {
+      id: 'c4',
+      name: 'Crypto & Web3 Pioneers',
+      description: 'Private circle exploring DeFi protocols, smart contracts, and Web3 security.',
+      lastMessage: 'Marcus (Admin): New analysis paper posted in general channel.',
+      members: '1.9k',
+      isPrivate: true,
+      adminName: 'Marcus Vance',
+      category: 'Crypto',
+      gradient: 'from-amber-500 to-orange-600',
+      bgLight: 'bg-amber-50',
+      borderLight: 'border-amber-200/60',
+      badgeColor: 'bg-amber-100 text-amber-700',
+    },
+    {
+      id: 'c5',
+      name: 'Photography & Visual Arts',
+      description: 'Showcase high-res landscape & portrait shots, color grading, and camera gear.',
+      lastMessage: 'Elena: Just shared my golden hour photo series from Yosemite!',
+      members: '45.1k',
+      isPrivate: false,
+      adminName: 'Elena Rostova',
+      category: 'Arts',
+      gradient: 'from-rose-500 to-red-600',
+      bgLight: 'bg-rose-50',
+      borderLight: 'border-rose-200/60',
+      badgeColor: 'bg-rose-100 text-rose-700',
+    },
+    {
+      id: 'c6',
+      name: 'React & TypeScript Mastery',
+      description: 'Advanced design patterns, generic type mastery, and state engine optimization.',
+      lastMessage: 'David: Created a reusable state machine helper for React forms!',
+      members: '8.9k',
+      isPrivate: false,
+      adminName: 'David Chen',
+      category: 'Tech',
+      gradient: 'from-cyan-500 to-blue-600',
+      bgLight: 'bg-cyan-50',
+      borderLight: 'border-cyan-200/60',
+      badgeColor: 'bg-cyan-100 text-cyan-700',
+    },
+  ]);
+
+  const filteredCommunities = communities.filter((community) => {
+    const matchesQuery =
+      community.name.toLowerCase().includes(communitySearchQuery.toLowerCase()) ||
+      community.description.toLowerCase().includes(communitySearchQuery.toLowerCase()) ||
+      community.category.toLowerCase().includes(communitySearchQuery.toLowerCase());
+
+    if (!matchesQuery) return false;
+
+    if (selectedCommunityCategory === 'Joined') return joinedCommunityIds.includes(community.id);
+    if (selectedCommunityCategory === 'Owned') return community.adminName === currentUser.name || community.ownerId === currentUser.id;
+    if (selectedCommunityCategory === 'Private') return community.isPrivate;
+    if (selectedCommunityCategory === 'Public') return !community.isPrivate;
+    return true;
+  });
+
+  const handleCreateCommunitySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createName.trim()) {
+      triggerCommunityToast('Please enter a community name', 'warning');
+      return;
+    }
+    const newId = 'c_' + Date.now();
+    const newComm = {
+      id: newId,
+      name: createName.trim(),
+      description: createDesc.trim() || `A community created by ${currentUser.name || 'You'}`,
+      lastMessage: `${currentUser.name || 'You'}: Welcome to ${createName.trim()}! 🎉`,
+      members: '1 member',
+      isPrivate: createIsPrivate,
+      adminName: currentUser.name || 'You',
+      ownerId: currentUser.id,
+      category: createCategory,
+      gradient: createGradient,
+      bgLight: 'bg-indigo-50',
+      borderLight: 'border-indigo-200/60',
+      badgeColor: 'bg-indigo-100 text-indigo-700',
+    };
+
+    setCommunities((prev) => [newComm, ...prev]);
+    setJoinedCommunityIds((prev) => [...prev, newId]);
+    setIsCreateCommunityOpen(false);
+    setCreateName('');
+    setCreateDesc('');
+    setCreateCategory('Tech');
+    setCreateIsPrivate(false);
+    triggerCommunityToast(`Community "${newComm.name}" created! You are the owner 👑`, 'success');
+  };
+
+  const openOwnerManager = (community: any) => {
+    setOwnerManageCommunity(community);
+    setEditName(community.name);
+    setEditDesc(community.description);
+    setEditCategory(community.category);
+    setEditIsPrivate(community.isPrivate);
+    setOwnerActiveTab('edit');
+  };
+
+  const handleSaveOwnerEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ownerManageCommunity) return;
+    setCommunities((prev) =>
+      prev.map((c) =>
+        c.id === ownerManageCommunity.id
+          ? {
+              ...c,
+              name: editName.trim() || c.name,
+              description: editDesc.trim() || c.description,
+              category: editCategory || c.category,
+              isPrivate: editIsPrivate,
+            }
+          : c
+      )
+    );
+    setOwnerManageCommunity(null);
+    triggerCommunityToast(`Updated community settings for "${editName}" ⚙️`, 'success');
+  };
+
+  const handleApproveJoinRequest = (communityId: string, reqId: string, applicantName: string) => {
+    setIncomingJoinRequests((prev) => ({
+      ...prev,
+      [communityId]: (prev[communityId] || []).filter((r) => r.id !== reqId),
+    }));
+    triggerCommunityToast(`Approved join request for ${applicantName}! 🎉`, 'success');
+  };
+
+  const handleRejectJoinRequest = (communityId: string, reqId: string, applicantName: string) => {
+    setIncomingJoinRequests((prev) => ({
+      ...prev,
+      [communityId]: (prev[communityId] || []).filter((r) => r.id !== reqId),
+    }));
+    triggerCommunityToast(`Declined join request from ${applicantName}`, 'info');
+  };
+
+  const handleSendBroadcast = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastMessage.trim() || !ownerManageCommunity) return;
+    triggerCommunityToast(`📢 Broadcast sent to ${ownerManageCommunity.name}: "${broadcastMessage.trim()}"`, 'success');
+    setBroadcastMessage('');
+  };
+
+  const handleDeleteCommunity = (communityId: string, communityName: string) => {
+    setCommunities((prev) => prev.filter((c) => c.id !== communityId));
+    setJoinedCommunityIds((prev) => prev.filter((id) => id !== communityId));
+    setOwnerManageCommunity(null);
+    triggerCommunityToast(`Community "${communityName}" has been deleted`, 'warning');
+  };
   const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
 
   // Context Menu & Modals State
@@ -393,6 +769,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [showExtendedReactions, setShowExtendedReactions] = useState(false);
   const [reportTargetMessage, setReportTargetMessage] = useState<Message | null>(null);
   const [deleteTargetMessage, setDeleteTargetMessage] = useState<Message | null>(null);
+  const [forwardTargetMessage, setForwardTargetMessage] = useState<Message | null>(null);
+  const [forwardSearchQuery, setForwardSearchQuery] = useState('');
 
   const [globalWallpaper, setGlobalWallpaper] = useState<ChatWallpaperSettings>(() => {
     try {
@@ -419,19 +797,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [liveWaveform, setLiveWaveform] = useState<number[]>([20, 40, 60, 30, 75, 45, 90, 60, 30, 80, 50, 40]);
+  const [chatTabFilter, setChatTabFilter] = useState<'direct' | 'groups'>('direct');
+  const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
+  const [isGroupInfoModalOpen, setIsGroupInfoModalOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeThread = activeChatUserId
-    ? threads.find((t) => t.participant.id === activeChatUserId || t.id === activeChatUserId)
+    ? threads.find((t) => t.participant?.id === activeChatUserId || t.id === activeChatUserId)
     : null;
 
-  // Auto scroll to bottom when messages update
+  // Auto scroll to bottom when messages update or typing state changes
   useEffect(() => {
     if (activeThread) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [activeThread?.messages]);
+  }, [activeThread?.messages, activeThread?.isTyping]);
 
   // When active thread changes or opens, mark unread incoming messages as seen
   useEffect(() => {
@@ -447,7 +828,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   // Prune messages according to individual chat setting (48 hours or 1 week)
   useEffect(() => {
     if (!activeThread || !onDeleteMessage) return;
-    const settings = getIndividualChatSettings(activeThread.participant.id);
+    const settings = getIndividualChatSettings((activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''));
     const now = Date.now();
 
     if (settings.autoDelete === '48h') {
@@ -526,7 +907,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       waveform: result.waveform,
     };
 
-    const userSettings = getIndividualChatSettings(activeThread.participant.id);
+    const userSettings = getIndividualChatSettings((activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''));
     const privacySettings = getMessagePrivacySettings();
     let effectivePrivacyMode: MessagePrivacyMode = 'normal';
     if (userSettings.autoDelete === 'seen') {
@@ -538,7 +919,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
 
     onSendMessage(
-      activeThread.participant.id,
+      (activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''),
       undefined,
       undefined,
       voiceData,
@@ -553,7 +934,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     if (e) e.preventDefault();
     if ((!inputText.trim() && !attachedImage) || !activeThread) return;
 
-    const userSettings = getIndividualChatSettings(activeThread.participant.id);
+    const userSettings = getIndividualChatSettings((activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''));
     const privacySettings = getMessagePrivacySettings();
     let effectivePrivacyMode: MessagePrivacyMode = 'normal';
     if (userSettings.autoDelete === 'seen') {
@@ -565,7 +946,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
 
     onSendMessage(
-      activeThread.participant.id,
+      (activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''),
       inputText.trim() || undefined,
       attachedImage || undefined,
       undefined,
@@ -605,7 +986,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   // Resolved wallpaper settings
   const currentThreadWallpaper: ChatWallpaperSettings =
-    (activeThread && wallpapersByThread[activeThread.participant.id]) || globalWallpaper;
+    (activeThread && wallpapersByThread[(activeThread.isGroup ? activeThread.id : activeThread.participant?.id || '')]) || globalWallpaper;
 
   const handleSaveWallpaper = (settings: ChatWallpaperSettings) => {
     if (settings.applyToAll) {
@@ -618,7 +999,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     } else if (activeThread) {
       const updated = {
         ...wallpapersByThread,
-        [activeThread.participant.id]: settings,
+        [(activeThread.isGroup ? activeThread.id : activeThread.participant?.id || '')]: settings,
       };
       setWallpapersByThread(updated);
       try {
@@ -710,6 +1091,41 @@ export const ChatView: React.FC<ChatViewProps> = ({
     setContextMessage(null);
   };
 
+  // Forward message to selected contact
+  const handleForwardMessage = (recipientUser: User) => {
+    if (!forwardTargetMessage) return;
+
+    // Determine sender attribution name
+    let originSenderName = 'Someone';
+    if (forwardTargetMessage.senderId === currentUser.id) {
+      originSenderName = currentUser.name;
+    } else if (activeThread && forwardTargetMessage.senderId === (activeThread.isGroup ? activeThread.id : activeThread.participant?.id || '')) {
+      originSenderName = (activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '');
+    } else {
+      const foundSender = MOCK_USERS.find((u) => u.id === forwardTargetMessage.senderId);
+      if (foundSender) originSenderName = foundSender.name;
+    }
+
+    // Call onSendMessage with forwarded payload
+    onSendMessage(
+      recipientUser.id,
+      forwardTargetMessage.text,
+      forwardTargetMessage.imageUrl,
+      forwardTargetMessage.voiceNote,
+      'normal',
+      true,
+      originSenderName
+    );
+
+    if (onShowToast) {
+      onShowToast(`Message forwarded to ${recipientUser.name} ✈️`);
+    }
+
+    // Close forward modal and reset state
+    setForwardTargetMessage(null);
+    setForwardSearchQuery('');
+  };
+
   // Open active thread
   if (activeThread) {
     return (
@@ -731,33 +1147,70 @@ export const ChatView: React.FC<ChatViewProps> = ({
             </button>
 
             <div
-              onClick={() => onOpenUserProfile && onOpenUserProfile(activeThread.participant)}
+              onClick={() => onOpenUserProfile && onOpenUserProfile(activeThread.participant!)}
               className="flex items-center gap-2.5 cursor-pointer group min-w-0"
               title="View Profile"
             >
               <div className="relative w-10 h-10 rounded-full neu-raised p-0.5 flex-shrink-0 group-hover:scale-105 transition-transform">
                 <img
-                  src={activeThread.participant.avatar}
-                  alt={activeThread.participant.name}
+                  src={(activeThread.isGroup ? activeThread.groupAvatar || '' : activeThread.participant?.avatar || '')}
+                  alt={(activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '')}
                   className="w-full h-full rounded-full object-cover"
                 />
-                {activeThread.participant.isOnline && (
+                {(activeThread.isGroup ? true : activeThread.participant?.isOnline) && (
                   <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#5B9DFF] ring-2 ring-white" />
                 )}
               </div>
 
               <div className="min-w-0">
                 <h3 className="text-sm font-bold text-slate-900 truncate group-hover:text-[#5B9DFF] transition-colors">
-                  {activeThread.participant.name}
+                  {(activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '')}
                 </h3>
-                <p className="text-[11px] text-[#5B9DFF] font-semibold truncate">
-                  {activeThread.participant.isOnline ? 'Online now' : 'Active recently'}
-                </p>
+                {activeThread.isTyping ? (
+                  <p className="text-[11px] text-[#5B9DFF] font-bold truncate flex items-center gap-1.5 animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#5B9DFF] inline-block animate-ping" />
+                    <span className="italic">typing...</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-[#5B9DFF] font-semibold truncate">
+                    {(activeThread.isGroup ? true : activeThread.participant?.isOnline) ? 'Online now' : 'Active recently'}
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
+            {/* Quick Mute Toggle */}
+            {(() => {
+              const currentSettings = getIndividualChatSettings((activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''));
+              const isMuted = currentSettings.isMuted;
+              return (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newMuted = !isMuted;
+                    const duration = newMuted ? 'permanent' : 'off';
+                    saveIndividualChatSettings((activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''), {
+                      isMuted: newMuted,
+                      muteDuration: duration,
+                    });
+                    if (onShowToast) {
+                      onShowToast(newMuted ? `Muted notifications from ${(activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '')}` : `Unmuted notifications from ${(activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '')}`);
+                    }
+                  }}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer select-none touch-manipulation active:scale-95 z-30 ${
+                    isMuted ? 'neu-inset text-rose-500 bg-rose-50/50' : 'neu-raised text-slate-600 hover:text-slate-900'
+                  }`}
+                  title={isMuted ? 'Unmute notifications' : 'Mute notifications'}
+                  aria-label={isMuted ? 'Unmute notifications' : 'Mute notifications'}
+                >
+                  {isMuted ? <BellOff className="w-4.5 h-4.5 pointer-events-none text-rose-500" /> : <Bell className="w-4.5 h-4.5 pointer-events-none" />}
+                </button>
+              );
+            })()}
+
             {/* More Menu Trigger */}
             <button
               type="button"
@@ -796,7 +1249,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
           {/* Scrollable Messages Area */}
           <div className="relative z-10 flex-1 overflow-y-auto no-scrollbar space-y-3 px-3.5 py-3 max-w-2xl mx-auto w-full">
-            {activeThread.messages.length === 0 ? (
+            {activeThread.messages.length === 0 && !activeThread.isTyping ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2 text-slate-400">
                 <div className="w-12 h-12 rounded-full neu-raised flex items-center justify-center text-slate-400">
                   <ShieldCheck className="w-6 h-6 text-[#5B9DFF]" />
@@ -829,6 +1282,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     />
                   );
                 })}
+                {activeThread.isTyping && (
+                  <TypingIndicatorBubble
+                    key="participant-typing-bubble"
+                    participant={activeThread.participant!}
+                  />
+                )}
               </AnimatePresence>
             )}
             <div ref={messagesEndRef} />
@@ -1027,7 +1486,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder={`Message ${activeThread.participant.name.split(' ')[0]}...`}
+                  placeholder={`Message ${(activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '').split(' ')[0]}...`}
                   className="flex-1 bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none px-2 min-w-0"
                 />
 
@@ -1086,6 +1545,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 {/* Quick Reaction Emoji Bar */}
                 {(() => {
                   const liveMsg = activeThread?.messages.find((m) => m.id === contextMessage.id) || contextMessage;
+
+                  const handleSendReactionAndClose = (emoji: string) => {
+                    if (activeThread && onToggleReaction) {
+                      if (navigator.vibrate) navigator.vibrate(25);
+                      onToggleReaction(activeThread.id, liveMsg.id, emoji);
+                      // Auto-hide reaction popup after sending reaction
+                      setTimeout(() => {
+                        setContextMessage(null);
+                        setShowExtendedReactions(false);
+                      }, 120);
+                    }
+                  };
+
                   return (
                     <div className="py-1">
                       <div className="flex items-center justify-between px-1 mb-1.5">
@@ -1107,12 +1579,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               type="button"
                               whileHover={{ scale: 1.25 }}
                               whileTap={{ scale: 0.85 }}
-                              onClick={() => {
-                                if (activeThread && onToggleReaction) {
-                                  if (navigator.vibrate) navigator.vibrate(25);
-                                  onToggleReaction(activeThread.id, liveMsg.id, emoji);
-                                }
-                              }}
+                              onClick={() => handleSendReactionAndClose(emoji)}
                               className={`w-8 h-8 rounded-full flex items-center justify-center text-lg transition-all cursor-pointer select-none ${
                                 isReacted
                                   ? 'bg-blue-100 ring-2 ring-[#5B9DFF] shadow-xs'
@@ -1166,12 +1633,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                                     type="button"
                                     whileHover={{ scale: 1.25 }}
                                     whileTap={{ scale: 0.85 }}
-                                    onClick={() => {
-                                      if (activeThread && onToggleReaction) {
-                                        if (navigator.vibrate) navigator.vibrate(25);
-                                        onToggleReaction(activeThread.id, liveMsg.id, emoji);
-                                      }
-                                    }}
+                                    onClick={() => handleSendReactionAndClose(emoji)}
                                     className={`w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all cursor-pointer ${
                                       isReacted
                                         ? 'bg-blue-100 ring-2 ring-[#5B9DFF]'
@@ -1206,11 +1668,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               <button
                                 key={r.emoji}
                                 type="button"
-                                onClick={() => {
-                                  if (activeThread && onToggleReaction) {
-                                    onToggleReaction(activeThread.id, liveMsg.id, r.emoji);
-                                  }
-                                }}
+                                onClick={() => handleSendReactionAndClose(r.emoji)}
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border transition cursor-pointer ${
                                   hasMe
                                     ? 'bg-blue-50/90 border-[#5B9DFF] text-[#1d4ed8] font-bold'
@@ -1250,6 +1708,26 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       </div>
                     </button>
                   )}
+
+                  {/* Forward message option */}
+                  <button
+                    onClick={() => {
+                      setForwardTargetMessage(contextMessage);
+                      setForwardSearchQuery('');
+                      setContextMessage(null);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-[16px] text-left text-xs font-bold text-blue-600 hover:bg-blue-50/80 flex items-center gap-3 transition cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                      <Forward className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="block">Forward</span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        Share message with another contact
+                      </span>
+                    </div>
+                  </button>
 
                   {/* Copy message text */}
                   {contextMessage.text && (
@@ -1307,7 +1785,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             isOpen={Boolean(reportTargetMessage)}
             contentType="message"
             contentId={reportTargetMessage.id}
-            targetUser={activeThread.participant}
+            targetUser={activeThread.isGroup ? { id: reportTargetMessage.senderId, name: reportTargetMessage.senderName || 'Group Member', username: 'group', avatar: '' } : activeThread.participant!}
             reporterUserId={currentUser.id}
             snippet={reportTargetMessage.text || (reportTargetMessage.imageUrl ? 'Photo attachment' : 'Voice note')}
             mediaUrl={reportTargetMessage.imageUrl}
@@ -1346,22 +1824,180 @@ export const ChatView: React.FC<ChatViewProps> = ({
           onClose={() => setIsWallpaperModalOpen(false)}
           currentSettings={currentThreadWallpaper}
           onSaveWallpaper={handleSaveWallpaper}
-          participantName={activeThread.participant.name}
+          participantName={(activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '')}
           onShowToast={onShowToast}
         />
 
         {/* Individual Conversation 3-Dot Settings Menu */}
-        <IndividualUserMenu
-          isOpen={showThreadMenu}
-          onClose={() => setShowThreadMenu(false)}
-          user={activeThread.participant}
-          isFollowing={activeThread.participant.isFollowing}
-          onToggleFollow={onToggleFollow}
-          onClearChat={onClearChat}
-          isLocked={lockedChatUserIds?.includes(activeThread.participant.id)}
-          onToggleLockChat={onToggleLockChat}
-          onShowToast={onShowToast}
-        />
+        {activeThread && !activeThread.isGroup && (
+          <IndividualUserMenu
+            isOpen={showThreadMenu}
+            onClose={() => setShowThreadMenu(false)}
+            user={activeThread.participant!}
+            isFollowing={activeThread.participant?.isFollowing || false}
+            onToggleFollow={onToggleFollow}
+            onClearChat={onClearChat}
+            isLocked={lockedChatUserIds?.includes(activeThread.participant?.id || '')}
+            onToggleLockChat={onToggleLockChat}
+            onShowToast={onShowToast}
+          />
+        )}
+
+        {/* Forward Message Recipient Selection Modal */}
+        <AnimatePresence>
+          {forwardTargetMessage && (
+            <div
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+              onClick={() => {
+                setForwardTargetMessage(null);
+                setForwardSearchQuery('');
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 100, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 100, scale: 0.95 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="w-full sm:max-w-md bg-white rounded-t-[28px] sm:rounded-[28px] p-5 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                      <Forward className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-sm">Forward Message</h3>
+                      <p className="text-[11px] text-slate-500">Select a contact to share this message with</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setForwardTargetMessage(null);
+                      setForwardSearchQuery('');
+                    }}
+                    className="w-8 h-8 rounded-full neu-raised flex items-center justify-center text-slate-500 hover:text-slate-700 transition cursor-pointer"
+                    aria-label="Close forward modal"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Message preview snippet */}
+                <div className="my-3 p-3 rounded-[16px] bg-slate-50 border border-slate-200/80 flex items-center gap-3 flex-shrink-0">
+                  {forwardTargetMessage.imageUrl && (
+                    <img
+                      src={forwardTargetMessage.imageUrl}
+                      alt="Attachment preview"
+                      className="w-11 h-11 rounded-[10px] object-cover flex-shrink-0 border border-slate-200"
+                    />
+                  )}
+                  {forwardTargetMessage.voiceNote && (
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
+                      <Mic className="w-5 h-5" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      Message Content
+                    </span>
+                    <p className="text-xs text-slate-700 font-medium truncate">
+                      {forwardTargetMessage.text ||
+                        (forwardTargetMessage.imageUrl
+                          ? 'Photo attachment'
+                          : `Voice note (0:${(forwardTargetMessage.voiceNote?.durationSeconds || 0) < 10 ? '0' : ''}${forwardTargetMessage.voiceNote?.durationSeconds || 0})`)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Contact Search Input */}
+                <div className="relative mb-3 flex-shrink-0">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={forwardSearchQuery}
+                    onChange={(e) => setForwardSearchQuery(e.target.value)}
+                    placeholder="Search contacts..."
+                    className="w-full pl-9 pr-8 py-2 rounded-[14px] bg-slate-100/90 border border-transparent focus:border-blue-400 focus:bg-white text-xs outline-hidden transition text-slate-800"
+                  />
+                  {forwardSearchQuery && (
+                    <button
+                      onClick={() => setForwardSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Contact List */}
+                <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[160px] max-h-[300px]">
+                  {(() => {
+                    const contacts = Array.from(
+                      new Map(
+                        [
+                          ...threads.map((t) => t.participant),
+                          ...MOCK_USERS,
+                        ]
+                          .filter((u) => u.id !== currentUser.id)
+                          .map((u) => [u.id, u])
+                      ).values()
+                    ).filter((u) => {
+                      if (!forwardSearchQuery.trim()) return true;
+                      const q = forwardSearchQuery.toLowerCase();
+                      return (
+                        u.name.toLowerCase().includes(q) ||
+                        u.username.toLowerCase().includes(q)
+                      );
+                    });
+
+                    if (contacts.length === 0) {
+                      return (
+                        <div className="text-center py-8 text-slate-400 text-xs">
+                          No contacts found matching "{forwardSearchQuery}"
+                        </div>
+                      );
+                    }
+
+                    return contacts.map((contact) => (
+                      <button
+                        key={contact.id}
+                        onClick={() => handleForwardMessage(contact)}
+                        className="w-full flex items-center justify-between p-2.5 rounded-[16px] hover:bg-blue-50/60 active:bg-blue-100/70 transition group cursor-pointer text-left"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative w-10 h-10 rounded-full flex-shrink-0">
+                            <img
+                              src={contact.avatar}
+                              alt={contact.name}
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                            {contact.isOnline && (
+                              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 truncate">
+                              {contact.name}
+                            </h4>
+                            <p className="text-[11px] text-slate-400 truncate">
+                              @{contact.username}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="px-3 py-1.5 rounded-full bg-slate-100 group-hover:bg-blue-500 group-hover:text-white text-slate-600 text-[11px] font-semibold flex items-center gap-1 transition flex-shrink-0 ml-2">
+                          <span>Send</span>
+                          <Forward className="w-3 h-3" />
+                        </div>
+                      </button>
+                    ));
+                  })()}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -1390,14 +2026,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   // Filter Active Now users
   const activeNowThreads = threads.filter((thread) => {
-    const isLocked = isChatLockEnabled && lockedChatUserIds.includes(thread.participant.id);
+    const isLocked = isChatLockEnabled && lockedChatUserIds.includes((thread.isGroup ? thread.id : thread.participant?.id || ''));
     if (isLocked && !isVaultUnlocked) return false;
     return true;
   });
 
-  // Filtered threads list
+  // Filtered threads list (matching participant name, username, bio, last message, or any message history text/transcripts)
   const filteredThreads = threads.filter((thread) => {
-    const isLocked = isChatLockEnabled && lockedChatUserIds.includes(thread.participant.id);
+    const isLocked = isChatLockEnabled && lockedChatUserIds.includes((thread.isGroup ? thread.id : thread.participant?.id || ''));
 
     if (isLocked && !isVaultUnlocked) {
       return false;
@@ -1408,11 +2044,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchName = thread.participant.name.toLowerCase().includes(q);
-      const matchUser = thread.participant.username.toLowerCase().includes(q);
-      const matchMsg = thread.lastMessage.text?.toLowerCase().includes(q);
-      return matchName || matchUser || matchMsg;
+      const q = searchQuery.toLowerCase().trim();
+      const matchName = (thread.isGroup ? thread.groupName || '' : thread.participant?.name || '').toLowerCase().includes(q);
+      const matchUser = (thread.isGroup ? thread.groupName || '' : thread.participant?.username || '').toLowerCase().includes(q);
+      const matchBio = (thread.isGroup ? thread.groupDescription || '' : thread.participant?.bio || '')?.toLowerCase().includes(q);
+      const matchLastMsg = thread.lastMessage.text?.toLowerCase().includes(q);
+      const matchAnyMsg = thread.messages?.some(
+        (m) =>
+          m.text?.toLowerCase().includes(q) ||
+          m.voiceNote?.transcript?.toLowerCase().includes(q) ||
+          m.reactions?.some((r) => r.emoji.includes(q))
+      );
+      return matchName || matchUser || matchBio || matchLastMsg || matchAnyMsg;
     }
 
     return true;
@@ -1448,28 +2091,85 @@ export const ChatView: React.FC<ChatViewProps> = ({
         </div>
       </div>
 
-      {/* Scrollable Body */}
-      <div className="flex-1 overflow-y-auto no-scrollbar px-3.5 py-3 space-y-4 max-w-xl mx-auto w-full">
+      
+      {/* Top Toggle Tabs */}
+      <div className="w-full bg-white px-4 py-2 border-b border-slate-200/80 flex-shrink-0 z-10 shadow-xs">
+        <div className="flex items-center gap-2 max-w-[500px] mx-auto bg-slate-100 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('messages')}
+            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+              activeMainTab === 'messages' 
+                ? 'bg-white text-[#5B9DFF] shadow-sm' 
+                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+            }`}
+          >
+            Messages
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('communities')}
+            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+              activeMainTab === 'communities' 
+                ? 'bg-white text-[#5B9DFF] shadow-sm' 
+                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+            }`}
+          >
+            Communities
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable Body - Tab View */}
+      <div className="flex-1 flex flex-col overflow-y-auto no-scrollbar w-full h-full bg-slate-50/50 items-center">
+          {/* Main Content Area */}
+          <div className="w-full max-w-[600px] space-y-4 h-full overflow-y-auto no-scrollbar pb-12 px-4 py-4">
+            {activeMainTab === 'messages' && (
+              <div className="space-y-4 animate-in fade-in duration-300">
+
         {/* 3D Neumorphic Search Bar */}
         <div>
-          <div className="neu-flat rounded-[20px] px-3.5 py-2.5 flex items-center gap-2.5 border border-slate-200/80 focus-within:ring-2 focus-within:ring-[#5B9DFF]/30 transition bg-white">
+          <div className="neu-flat rounded-[20px] px-3.5 py-2.5 flex items-center gap-2.5 border border-slate-200/80 focus-within:ring-2 focus-within:ring-[#5B9DFF]/30 transition bg-white shadow-xs">
             <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search conversations or enter 6-digit PIN..."
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setSearchQuery('');
+              }}
+              placeholder="Search by name or message content..."
               className="flex-1 bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery('')}
-                className="text-slate-400 hover:text-slate-600 p-0.5"
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-full hover:bg-slate-100 transition cursor-pointer"
+                title="Clear search"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
+
+          {/* Search Result Feedback Badge */}
+          {searchQuery.trim() && !isVaultUnlocked && (
+            <div className="flex items-center justify-between px-2 pt-2 text-[11px] text-slate-500">
+              <span>
+                {filteredThreads.length === 0
+                  ? 'No matching results'
+                  : `Found ${filteredThreads.length} conversation${filteredThreads.length === 1 ? '' : 's'}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-[#5B9DFF] font-semibold hover:underline cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Vault Unlocked Banner */}
@@ -1508,7 +2208,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         )}
 
         {/* Active Online Friends Horizontal Reel */}
-        {activeNowThreads.length > 0 && (
+        {!searchQuery.trim() && activeNowThreads.length > 0 && (
           <div>
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2 px-1">
               Active Now
@@ -1518,21 +2218,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <button
                   key={thread.id}
                   type="button"
-                  onClick={() => onSelectThread(thread.participant.id)}
+                  onClick={() => onSelectThread((thread.isGroup ? thread.id : thread.participant?.id || ''))}
                   className="flex flex-col items-center flex-shrink-0 group cursor-pointer select-none"
                 >
                   <div className="relative w-13 h-13 rounded-full neu-raised p-0.5 transition-transform group-hover:scale-105">
                     <img
-                      src={thread.participant.avatar}
-                      alt={thread.participant.name}
+                      src={(thread.isGroup ? thread.groupAvatar || '' : thread.participant?.avatar || '')}
+                      alt={(thread.isGroup ? thread.groupName || '' : thread.participant?.name || '')}
                       className="w-full h-full rounded-full object-cover"
                     />
-                    {thread.participant.isOnline && (
+                    {(thread.isGroup ? true : thread.participant?.isOnline) && (
                       <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#5B9DFF] ring-2 ring-white" />
                     )}
                   </div>
                   <span className="text-xs font-semibold text-slate-800 group-hover:text-[#5B9DFF] transition-colors mt-1.5 max-w-[58px] truncate text-center">
-                    {thread.participant.name.split(' ')[0]}
+                    {(thread.isGroup ? thread.groupName || '' : thread.participant?.name || '').split(' ')[0]}
                   </span>
                 </button>
               ))}
@@ -1543,18 +2243,31 @@ export const ChatView: React.FC<ChatViewProps> = ({
         {/* Threads List */}
         <div className="space-y-3 pb-8">
           {filteredThreads.length === 0 ? (
-            <div className="neu-inset rounded-[24px] p-8 text-center text-slate-400 text-xs bg-white">
-              No conversations found
+            <div className="neu-inset rounded-[24px] p-8 text-center text-slate-400 text-xs bg-white space-y-3">
+              <p>No conversations found matching "{searchQuery}"</p>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="neu-raised px-4 py-1.5 rounded-full text-xs font-bold text-[#5B9DFF] hover:bg-blue-50 transition cursor-pointer"
+                >
+                  Clear search
+                </button>
+              )}
             </div>
           ) : (
             filteredThreads.map((thread) => {
-              const isThisLocked = isChatLockEnabled && lockedChatUserIds.includes(thread.participant.id);
+              const isThisLocked = isChatLockEnabled && lockedChatUserIds.includes((thread.isGroup ? thread.id : thread.participant?.id || ''));
+              const q = searchQuery.trim().toLowerCase();
+              const matchedHistoricalMsg = q
+                ? thread.messages?.find((m) => m.text?.toLowerCase().includes(q) || m.voiceNote?.transcript?.toLowerCase().includes(q))
+                : null;
               return (
                 <motion.div
                   key={thread.id}
                   whileHover={{ y: -1 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => onSelectThread(thread.participant.id)}
+                  onClick={() => onSelectThread((thread.isGroup ? thread.id : thread.participant?.id || ''))}
                   className={`neu-flat rounded-[22px] p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:shadow-md transition-all bg-white ${
                     isThisLocked ? 'border border-blue-200/80 bg-blue-50/20' : ''
                   }`}
@@ -1562,11 +2275,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   {/* Avatar */}
                   <div className="relative w-12 h-12 rounded-full neu-raised p-0.5 flex-shrink-0">
                     <img
-                      src={thread.participant.avatar}
-                      alt={thread.participant.name}
+                      src={(thread.isGroup ? thread.groupAvatar || '' : thread.participant?.avatar || '')}
+                      alt={(thread.isGroup ? thread.groupName || '' : thread.participant?.name || '')}
                       className="w-full h-full rounded-full object-cover"
                     />
-                    {thread.participant.isOnline && (
+                    {(thread.isGroup ? true : thread.participant?.isOnline) && (
                       <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#5B9DFF] ring-2 ring-white" />
                     )}
                     {isThisLocked && (
@@ -1581,8 +2294,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <div className="flex items-center justify-between mb-0.5">
                       <div className="flex items-center gap-1.5 truncate">
                         <h4 className="text-xs font-bold text-slate-800 truncate">
-                          {thread.participant.name}
+                          {(thread.isGroup ? thread.groupName || '' : thread.participant?.name || '')}
                         </h4>
+                        {getIndividualChatSettings((thread.isGroup ? thread.id : thread.participant?.id || '')).isMuted && (
+                          <span className="text-slate-400 flex-shrink-0" title="Muted chat">
+                            <BellOff className="w-3 h-3 text-slate-400" />
+                          </span>
+                        )}
                         {isThisLocked && (
                           <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-rose-100 text-rose-600 flex-shrink-0">
                             LOCKED
@@ -1595,25 +2313,49 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     </div>
                     <div
                       className={`text-xs truncate flex items-center gap-1.5 ${
-                        thread.unreadCount > 0
+                        thread.isTyping
+                          ? 'text-[#5B9DFF] font-semibold italic'
+                          : thread.unreadCount > 0
                           ? 'font-bold text-slate-900'
                           : 'text-slate-500'
                       }`}
                     >
-                      {thread.lastMessage.isOwn && <span>You: </span>}
-                      {thread.lastMessage.isVoice ? (
-                        <span className="flex items-center gap-1 text-[#5B9DFF] font-semibold">
-                          <Mic className="w-3 h-3" />
-                          <span>
-                            Voice note {thread.lastMessage.voiceDuration ? `(0:${thread.lastMessage.voiceDuration < 10 ? '0' : ''}${thread.lastMessage.voiceDuration})` : ''}
+                      {thread.isTyping ? (
+                        <span className="flex items-center gap-1.5 text-[#5B9DFF]">
+                          <span className="flex items-center gap-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#5B9DFF] animate-bounce" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#5B9DFF] animate-bounce [animation-delay:0.15s]" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#5B9DFF] animate-bounce [animation-delay:0.3s]" />
                           </span>
+                          <span>typing...</span>
                         </span>
-                      ) : thread.lastMessage.imageUrl ? (
-                        <span>📷 Photo attachment</span>
                       ) : (
-                        <span>{thread.lastMessage.text}</span>
+                        <>
+                          {thread.lastMessage.isOwn && <span>You: </span>}
+                          {thread.lastMessage.isVoice ? (
+                            <span className="flex items-center gap-1 text-[#5B9DFF] font-semibold">
+                              <Mic className="w-3 h-3" />
+                              <span>
+                                Voice note {thread.lastMessage.voiceDuration ? `(0:${thread.lastMessage.voiceDuration < 10 ? '0' : ''}${thread.lastMessage.voiceDuration})` : ''}
+                              </span>
+                            </span>
+                          ) : thread.lastMessage.imageUrl ? (
+                            <span>📷 Photo attachment</span>
+                          ) : (
+                            <span>{thread.lastMessage.text}</span>
+                          )}
+                        </>
                       )}
                     </div>
+
+                    {/* Matched message snippet chip when searching historical messages */}
+                    {matchedHistoricalMsg && matchedHistoricalMsg.text && matchedHistoricalMsg.text !== thread.lastMessage.text && (
+                      <div className="mt-1">
+                        <span className="inline-block text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md border border-blue-200/60 max-w-full truncate">
+                          Matched text: "{matchedHistoricalMsg.text}"
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Unread badge */}
@@ -1627,6 +2369,221 @@ export const ChatView: React.FC<ChatViewProps> = ({
             })
           )}
         </div>
+
+              </div>
+            )}
+            {activeMainTab === "communities" && (
+              <div className="space-y-4 animate-in fade-in duration-300">
+                {/* Search Bar + Create Community Action */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 neu-flat rounded-[20px] px-3.5 py-2.5 flex items-center gap-2 border border-slate-200/80 focus-within:ring-2 focus-within:ring-[#5B9DFF]/30 transition bg-white shadow-xs">
+                    <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <input
+                      type="text"
+                      value={communitySearchQuery}
+                      onChange={(e) => setCommunitySearchQuery(e.target.value)}
+                      placeholder="Search communities by name, topic..."
+                      className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium"
+                    />
+                    {communitySearchQuery && (
+                      <button
+                        onClick={() => setCommunitySearchQuery('')}
+                        className="text-slate-400 hover:text-slate-600 transition"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateCommunityOpen(true)}
+                    className="px-3.5 py-2.5 rounded-[20px] bg-[#5B9DFF] text-white font-bold text-xs flex items-center gap-1.5 hover:bg-blue-600 transition shadow-xs shadow-[#5B9DFF]/30 flex-shrink-0 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create</span>
+                  </button>
+                </div>
+
+                {/* Category Pill Filters */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  {['All', 'Joined', 'Owned', 'Public', 'Private'].map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCommunityCategory(cat)}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold transition flex-shrink-0 cursor-pointer flex items-center gap-1 ${
+                        selectedCommunityCategory === cat
+                          ? 'bg-[#5B9DFF] text-white shadow-xs'
+                          : 'bg-white text-slate-600 border border-slate-200/70 hover:bg-slate-50'
+                      }`}
+                    >
+                      {cat === 'Owned' && <Crown className="w-3 h-3 text-amber-300" />}
+                      <span>{cat}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Communities List */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <h3 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <UsersIcon className="w-3.5 h-3.5 text-[#5B9DFF]" />
+                      Communities ({filteredCommunities.length})
+                    </h3>
+                  </div>
+
+                  {filteredCommunities.length === 0 ? (
+                    <div className="bg-white neu-flat rounded-2xl p-6 text-center border border-slate-200/60 shadow-sm space-y-2">
+                      <UsersIcon className="w-8 h-8 text-slate-300 mx-auto" />
+                      <p className="text-xs font-bold text-slate-700">No communities found</p>
+                      <p className="text-[11px] text-slate-400">Try adjusting your search or category filter</p>
+                      <div className="flex items-center justify-center gap-3 pt-2">
+                        <button
+                          onClick={() => {
+                            setCommunitySearchQuery('');
+                            setSelectedCommunityCategory('All');
+                          }}
+                          className="text-xs text-[#5B9DFF] font-bold hover:underline"
+                        >
+                          Reset Filters
+                        </button>
+                        <button
+                          onClick={() => setIsCreateCommunityOpen(true)}
+                          className="text-xs text-emerald-600 font-bold hover:underline flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> Create Community
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    filteredCommunities.map((community) => {
+                      const isJoined = joinedCommunityIds.includes(community.id);
+                      const isPending = pendingJoinRequests.includes(community.id);
+                      const isOwner = community.adminName === currentUser.name || community.ownerId === currentUser.id;
+                      const reqCount = (incomingJoinRequests[community.id] || []).length;
+
+                      return (
+                        <div
+                          key={community.id}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-white neu-flat rounded-2xl border border-slate-200/60 shadow-xs hover:border-slate-300/80 transition group"
+                        >
+                          <div
+                            onClick={() => setSelectedChannelCommunity(community)}
+                            className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer group/title hover:opacity-95"
+                            title="Tap community logo or name to open community channel"
+                          >
+                            <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${community.gradient} text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover/title:scale-105 transition-transform overflow-hidden relative`}>
+                              {(community as any).avatarUrl ? (
+                                <img src={(community as any).avatarUrl} alt={community.name} className="w-full h-full object-cover" />
+                              ) : (community as any).avatarEmoji ? (
+                                <span className="text-xl">{(community as any).avatarEmoji}</span>
+                              ) : community.isPrivate ? (
+                                <Lock className="w-5 h-5 text-white" />
+                              ) : (
+                                <Globe className="w-5 h-5 text-white" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="text-sm font-bold text-slate-800 truncate group-hover/title:text-[#5B9DFF] transition-colors">
+                                  {community.name}
+                                </h4>
+                                {isOwner ? (
+                                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300/70 flex items-center gap-1 shadow-2xs">
+                                    <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-500" /> Owner
+                                  </span>
+                                ) : community.isPrivate ? (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/50 flex items-center gap-1">
+                                    <Lock className="w-2.5 h-2.5" /> Private
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 flex items-center gap-1">
+                                    <Globe className="w-2.5 h-2.5" /> Public
+                                  </span>
+                                )}
+                                <span className="text-[10px] font-semibold text-slate-400">
+                                  {community.members} members
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 font-normal">
+                                {community.description}
+                              </p>
+                              <p className="text-[10px] text-slate-400 truncate mt-1 italic">
+                                "{community.lastMessage}"
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 flex-shrink-0 pt-1 sm:pt-0">
+                            {isOwner ? (
+                              <button
+                                onClick={() => openOwnerManager(community)}
+                                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 transition flex items-center gap-1.5 cursor-pointer shadow-xs shadow-amber-500/20 relative"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                                <span>Owner Options</span>
+                                {reqCount > 0 && (
+                                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center ring-2 ring-white">
+                                    {reqCount}
+                                  </span>
+                                )}
+                              </button>
+                            ) : isJoined ? (
+                              <button
+                                onClick={() => handleToggleCommunityState(community)}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center gap-1.5 cursor-pointer shadow-xs group/btn"
+                                title="Click to leave community"
+                              >
+                                <Check className="w-3.5 h-3.5 group-hover/btn:hidden" />
+                                <X className="w-3.5 h-3.5 hidden group-hover/btn:block" />
+                                <span className="group-hover/btn:hidden">Joined</span>
+                                <span className="hidden group-hover/btn:inline">Leave</span>
+                              </button>
+                            ) : isPending ? (
+                              <button
+                                onClick={() => handleToggleCommunityState(community)}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-600 border border-amber-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center gap-1.5 cursor-pointer shadow-xs group/btn"
+                                title="Click to cancel join request"
+                              >
+                                <Clock className="w-3.5 h-3.5 animate-pulse group-hover/btn:hidden text-amber-500" />
+                                <X className="w-3.5 h-3.5 hidden group-hover/btn:block text-rose-500" />
+                                <span className="group-hover/btn:hidden">Pending Approval</span>
+                                <span className="hidden group-hover/btn:inline">Cancel Request</span>
+                              </button>
+                            ) : community.isPrivate ? (
+                              <button
+                                onClick={() => handleToggleCommunityState(community)}
+                                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                              >
+                                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                                Request to Join
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleCommunityState(community)}
+                                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#5B9DFF] text-white hover:bg-blue-600 transition flex items-center gap-1.5 cursor-pointer shadow-xs shadow-[#5B9DFF]/20"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                Join
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setIsCreateCommunityOpen(true)}
+                  className="w-full mt-3 py-3 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/30 text-[#5B9DFF] hover:bg-blue-50 transition flex items-center justify-center gap-2 text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Your Own Community
+                </button>
+              </div>
+            )}
+          </div>
       </div>
 
       {/* Global Wallpaper Modal in Messages overview */}
@@ -1640,19 +2597,357 @@ export const ChatView: React.FC<ChatViewProps> = ({
       />
 
       {/* Individual Conversation 3-Dot Settings Menu */}
-      {activeThread && (
+      {activeThread && !activeThread.isGroup && (
         <IndividualUserMenu
           isOpen={showThreadMenu}
           onClose={() => setShowThreadMenu(false)}
-          user={activeThread.participant}
-          isFollowing={activeThread.participant.isFollowing}
+          user={activeThread.participant!}
+          isFollowing={(activeThread.isGroup ? false : activeThread.participant?.isFollowing)}
           onToggleFollow={onToggleFollow}
           onClearChat={onClearChat}
-          isLocked={lockedChatUserIds?.includes(activeThread.participant.id)}
+          isLocked={lockedChatUserIds?.includes((activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''))}
           onToggleLockChat={onToggleLockChat}
           onShowToast={onShowToast}
         />
       )}
+
+      {/* CreateGroupModal */}
+      <CreateGroupModal
+        isOpen={isCreateGroupModalOpen}
+        currentUser={currentUser}
+        allUsers={allUsers || MOCK_USERS}
+        onClose={() => setIsCreateGroupModalOpen(false)}
+        onCreateGroup={(name, desc, avatar, memberIds) => {
+          if (onCreateGroup) {
+            onCreateGroup(name, desc, avatar, memberIds);
+          }
+          setIsCreateGroupModalOpen(false);
+          if (onShowToast) {
+            onShowToast(`Group "${name}" created successfully! 🎉`);
+          }
+        }}
+      />
+
+      {/* GroupInfoModal */}
+      {activeThread && activeThread.isGroup && (
+        <GroupInfoModal
+          isOpen={isGroupInfoModalOpen}
+          thread={activeThread}
+          currentUser={currentUser}
+          allUsers={allUsers || MOCK_USERS}
+          onClose={() => setIsGroupInfoModalOpen(false)}
+          onUpdateGroup={(groupId, updates) => {
+            if (onUpdateGroup) {
+              onUpdateGroup(groupId, updates);
+            }
+            if (onShowToast) {
+              onShowToast('Group settings updated successfully!');
+            }
+          }}
+          onLeaveGroup={() => {
+            if (onLeaveGroup) {
+              onLeaveGroup(activeThread.id);
+            }
+            setIsGroupInfoModalOpen(false);
+            if (onShowToast) {
+              onShowToast(`You left group "${activeThread.groupName}"`);
+            }
+          }}
+        />
+      )}
+
+
+      
+
+      {/* Create Community Modal */}
+      <AnimatePresence>
+        {isCreateCommunityOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-5 max-w-md w-full shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto no-scrollbar"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">Create New Community</h3>
+                    <p className="text-[11px] text-slate-500">You will be designated as the Community Owner 👑</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCreateCommunityOpen(false)}
+                  className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateCommunitySubmit} className="space-y-3.5">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Community Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={createName}
+                    onChange={(e) => setCreateName(e.target.value)}
+                    placeholder="e.g. AI & Machine Learning Club"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/30 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={createDesc}
+                    onChange={(e) => setCreateDesc(e.target.value)}
+                    placeholder="What is this community about? Share guidelines or topics..."
+                    className="w-full h-20 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/30 resize-none font-medium"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={createCategory}
+                      onChange={(e) => setCreateCategory(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/30 font-semibold"
+                    >
+                      {['Tech', 'Outdoors', 'Design', 'Crypto', 'Arts', 'Gaming', 'Lifestyle'].map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Privacy Mode
+                    </label>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setCreateIsPrivate(false)}
+                        className={`flex-1 py-1 text-[11px] font-bold rounded-lg transition ${
+                          !createIsPrivate ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'
+                        }`}
+                      >
+                        Public
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCreateIsPrivate(true)}
+                        className={`flex-1 py-1 text-[11px] font-bold rounded-lg transition ${
+                          createIsPrivate ? 'bg-white text-amber-600 shadow-xs' : 'text-slate-500'
+                        }`}
+                      >
+                        Private
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                    Theme Color Gradient
+                  </label>
+                  <div className="grid grid-cols-6 gap-2">
+                    {[
+                      { g: 'from-indigo-500 to-blue-600', label: 'Indigo' },
+                      { g: 'from-emerald-500 to-teal-600', label: 'Emerald' },
+                      { g: 'from-purple-500 to-pink-600', label: 'Purple' },
+                      { g: 'from-amber-500 to-orange-600', label: 'Amber' },
+                      { g: 'from-rose-500 to-red-600', label: 'Rose' },
+                      { g: 'from-cyan-500 to-blue-600', label: 'Cyan' },
+                    ].map((item) => (
+                      <button
+                        key={item.g}
+                        type="button"
+                        onClick={() => setCreateGradient(item.g)}
+                        className={`h-8 rounded-xl bg-gradient-to-tr ${item.g} border-2 transition-transform ${
+                          createGradient === item.g ? 'border-slate-900 scale-110 shadow-sm' : 'border-transparent hover:scale-105'
+                        }`}
+                        title={item.label}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateCommunityOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 rounded-xl bg-[#5B9DFF] text-white text-xs font-bold hover:bg-blue-600 transition flex items-center justify-center gap-1.5 shadow-md shadow-[#5B9DFF]/20 cursor-pointer"
+                  >
+                    <Crown className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                    Create Community
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Comprehensive Community Admin Settings Modal */}
+      {ownerManageCommunity && (
+        <CommunityAdminSettingsModal
+          isOpen={!!ownerManageCommunity}
+          onClose={() => setOwnerManageCommunity(null)}
+          community={ownerManageCommunity}
+          incomingRequests={incomingJoinRequests[ownerManageCommunity.id] || []}
+          onUpdateCommunity={(updatedData) => {
+            if (!ownerManageCommunity) return;
+            setCommunities((prev) =>
+              prev.map((c) => (c.id === ownerManageCommunity.id ? { ...c, ...updatedData } : c))
+            );
+            setOwnerManageCommunity((prev: any) => (prev ? { ...prev, ...updatedData } : null));
+          }}
+          onApproveRequest={(reqId, applicantName) => {
+            handleApproveJoinRequest(ownerManageCommunity.id, reqId, applicantName);
+          }}
+          onRejectRequest={(reqId, applicantName) => {
+            handleRejectJoinRequest(ownerManageCommunity.id, reqId, applicantName);
+          }}
+          onSendBroadcast={(msg) => {
+            triggerCommunityToast(`Broadcast sent to ${ownerManageCommunity.name} members 📢`, 'success');
+          }}
+          onDeleteCommunity={(id, name) => {
+            handleDeleteCommunity(id, name);
+          }}
+          onShowToast={triggerCommunityToast}
+        />
+      )}
+
+      {/* Join Request Modal for Private Communities */}
+      <AnimatePresence>
+        {joinRequestModalCommunity && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl border border-slate-100 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">Private Join Request</h3>
+                    <p className="text-[11px] text-slate-500">Requires admin review to access</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setJoinRequestModalCommunity(null)}
+                  className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/60 flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${joinRequestModalCommunity.gradient} text-white flex items-center justify-center font-bold shadow-xs flex-shrink-0`}>
+                  <UsersIcon className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-slate-800 truncate">{joinRequestModalCommunity.name}</h4>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    Admin: <span className="font-semibold text-slate-700">{joinRequestModalCommunity.adminName}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Message for Admin (Optional)
+                </label>
+                <textarea
+                  value={joinRequestNote}
+                  onChange={(e) => setJoinRequestNote(e.target.value)}
+                  placeholder="Hi! I'd love to join this community..."
+                  className="w-full h-20 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/30 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setJoinRequestModalCommunity(null)}
+                  className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendJoinRequest}
+                  className="flex-1 py-2 rounded-xl bg-[#5B9DFF] text-white text-xs font-bold hover:bg-blue-600 transition flex items-center justify-center gap-1.5 shadow-md shadow-[#5B9DFF]/20 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Send Request
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Community Channel & Detail View Modal */}
+      {selectedChannelCommunity && (
+        <CommunityChannelModal
+          isOpen={!!selectedChannelCommunity}
+          onClose={() => setSelectedChannelCommunity(null)}
+          community={selectedChannelCommunity}
+          isJoined={joinedCommunityIds.includes(selectedChannelCommunity.id)}
+          isOwner={
+            selectedChannelCommunity.adminName === currentUser.name ||
+            selectedChannelCommunity.ownerId === currentUser.id
+          }
+          onJoinToggle={() => handleToggleCommunityState(selectedChannelCommunity)}
+          onOpenOwnerAdmin={() => openOwnerManager(selectedChannelCommunity)}
+          onShowToast={(msg, type) => triggerCommunityToast(msg, type || 'info')}
+        />
+      )}
+
+      {/* Floating Real-Time Toast Notification */}
+      <AnimatePresence>
+        {localToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-slate-900/90 backdrop-blur-md text-white text-xs font-semibold shadow-xl border border-white/10 flex items-center gap-2 pointer-events-auto"
+          >
+            <Sparkles className="w-4 h-4 text-[#5B9DFF]" />
+            <span>{localToast.message}</span>
+            <button
+              onClick={() => setLocalToast(null)}
+              className="ml-1 text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

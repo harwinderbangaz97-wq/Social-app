@@ -18,6 +18,11 @@ const StoriesSectionComponent: React.FC<StoriesSectionProps> = ({
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const currentUserStoryIndex = stories.findIndex(
+    (s) => s.userId === currentUser.id || s.user?.id === currentUser.id
+  );
+  const hasUserStory = currentUserStoryIndex !== -1;
+
   return (
     <section className="w-full py-2">
       <div
@@ -29,22 +34,41 @@ const StoriesSectionComponent: React.FC<StoriesSectionProps> = ({
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.96 }}
           className="flex flex-col items-center flex-shrink-0 cursor-pointer group"
-          onClick={onAddStory}
+          onClick={() => {
+            if (hasUserStory) {
+              onSelectStory(currentUserStoryIndex);
+            } else {
+              onAddStory();
+            }
+          }}
         >
-          <div className="relative w-[72px] h-[72px] rounded-full neu-raised p-1 flex items-center justify-center transition-all group-hover:shadow-lg">
-            <div className="relative w-full h-full rounded-full overflow-hidden">
+          <div
+            className={`relative w-[72px] h-[72px] rounded-full p-1 flex items-center justify-center transition-all group-hover:shadow-lg ${
+              hasUserStory
+                ? 'bg-gradient-to-tr from-[#5B9DFF] via-indigo-400 to-rose-400 p-[2.5px]'
+                : 'neu-raised p-1'
+            }`}
+          >
+            <div className="relative w-full h-full rounded-full overflow-hidden bg-white p-[2px]">
               <img
                 src={currentUser.avatar}
                 alt="Your Story"
                 loading="lazy"
                 decoding="async"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                className="w-full h-full rounded-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
               <div className="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors" />
             </div>
 
-            {/* Large 3D Blue Plus Icon Badge */}
-            <div className="absolute -bottom-1 -right-1 w-6.5 h-6.5 rounded-full bg-[#5B9DFF] text-white flex items-center justify-center shadow-md ring-2 ring-white">
+            {/* Plus Icon Badge */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddStory();
+              }}
+              className="absolute -bottom-1 -right-1 w-6.5 h-6.5 rounded-full bg-[#5B9DFF] text-white flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 active:scale-95 transition-transform cursor-pointer"
+              title="Add story"
+            >
               <Plus className="w-4.5 h-4.5 stroke-[3]" />
             </div>
           </div>
@@ -55,6 +79,10 @@ const StoriesSectionComponent: React.FC<StoriesSectionProps> = ({
 
         {/* Stories from following users */}
         {stories.map((story, index) => {
+          // If this is the current user's story, skip here since it's displayed as "Your Story"
+          if (story.userId === currentUser.id || story.user?.id === currentUser.id) {
+            return null;
+          }
           return (
             <motion.div
               key={story.id}

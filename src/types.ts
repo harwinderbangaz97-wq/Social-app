@@ -51,6 +51,10 @@ export interface Story {
   timestamp: string;
   isSeen: boolean;
   caption?: string;
+  likesCount?: number;
+  isLiked?: boolean;
+  likedBy?: User[];
+  viewsCount?: number;
 }
 
 export interface Comment {
@@ -86,6 +90,7 @@ export interface VoiceNoteData {
   audioUrl?: string;
   durationSeconds: number;
   waveform: number[];
+  transcript?: string;
 }
 
 export type MessagePrivacyMode = 'normal' | 'immediate' | 'after_seen';
@@ -143,11 +148,20 @@ export interface Message {
   seenAt?: number;
   disappearingSeconds?: number;
   reactions?: MessageReaction[];
+  isForwarded?: boolean;
+  forwardedFrom?: string;
+  senderName?: string;
 }
 
 export interface ChatThread {
   id: string;
-  participant: User;
+  participant?: User;
+  isGroup?: boolean;
+  groupName?: string;
+  groupAvatar?: string;
+  groupDescription?: string;
+  groupMembers?: User[];
+  groupAdminIds?: string[];
   lastMessage: {
     text?: string;
     imageUrl?: string;
@@ -156,14 +170,16 @@ export interface ChatThread {
     timestamp: string;
     isRead: boolean;
     isOwn: boolean;
+    senderName?: string;
   };
   unreadCount: number;
   messages: Message[];
+  isTyping?: boolean;
 }
 
 export interface NotificationItem {
   id: string;
-  type: 'like' | 'dislike' | 'comment' | 'follow' | 'mention' | 'message' | 'safety_removal' | 'system';
+  type: 'like' | 'dislike' | 'comment' | 'follow' | 'mention' | 'message' | 'safety_removal' | 'story_like' | 'system';
   user: User;
   text: string;
   timestamp: string;
