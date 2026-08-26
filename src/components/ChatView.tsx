@@ -36,10 +36,13 @@ import {
   Settings,
   Edit3,
   Megaphone,
+  MessageSquare,
+  Share2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, ChatThread, Message, VoiceNoteData, MessagePrivacyMode, MessageReportReason } from '../types';
 import { MOCK_USERS } from '../data/mockData';
+import { ShareCommunityModal } from './ShareCommunityModal';
 import { VoiceMessageBubble } from './VoiceMessageBubble';
 import { ChatWallpaperModal, ChatWallpaperSettings } from './ChatWallpaperModal';
 import { DeleteMessageConfirmModal } from './DeleteMessageConfirmModal';
@@ -502,6 +505,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [pendingJoinRequests, setPendingJoinRequests] = useState<string[]>([]);
   const [joinRequestModalCommunity, setJoinRequestModalCommunity] = useState<any | null>(null);
   const [selectedChannelCommunity, setSelectedChannelCommunity] = useState<any | null>(null);
+  const [shareCommunityTarget, setShareCommunityTarget] = useState<any | null>(null);
   const [joinRequestNote, setJoinRequestNote] = useState('');
   const [localToast, setLocalToast] = useState<{ id: string; message: string; type?: 'success' | 'info' | 'warning' } | null>(null);
 
@@ -2093,14 +2097,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
       
       {/* Top Toggle Tabs */}
-      <div className="w-full bg-white px-4 py-2 border-b border-slate-200/80 flex-shrink-0 z-10 shadow-xs">
-        <div className="flex items-center gap-2 max-w-[500px] mx-auto bg-slate-100 p-1 rounded-xl">
+      <div className="w-full bg-white px-4 py-2.5 border-b border-slate-200/80 flex-shrink-0 z-10 shadow-xs">
+        <div className="flex items-center gap-2 max-w-[500px] mx-auto bg-slate-100 p-1.5 rounded-2xl">
           <button
             type="button"
             onClick={() => setActiveMainTab('messages')}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            className={`flex-1 py-2 text-xs font-extrabold rounded-xl transition-all cursor-pointer ${
               activeMainTab === 'messages' 
-                ? 'bg-white text-[#5B9DFF] shadow-sm' 
+                ? 'bg-white text-[#5B9DFF] shadow-xs' 
                 : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
             }`}
           >
@@ -2109,9 +2113,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveMainTab('communities')}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            className={`flex-1 py-2 text-xs font-extrabold rounded-xl transition-all cursor-pointer ${
               activeMainTab === 'communities' 
-                ? 'bg-white text-[#5B9DFF] shadow-sm' 
+                ? 'bg-white text-[#5B9DFF] shadow-xs' 
                 : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
             }`}
           >
@@ -2236,6 +2240,57 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   </span>
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Joined Communities Horizontal Reel */}
+        {!searchQuery.trim() && (
+          <div>
+            <div className="flex items-center justify-between px-1 mb-2">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <UsersIcon className="w-3.5 h-3.5 text-[#5B9DFF]" /> Your Communities
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('communities')}
+                className="text-[11px] font-bold text-[#5B9DFF] hover:underline"
+              >
+                Explore All
+              </button>
+            </div>
+            <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1">
+              {communities
+                .filter(
+                  (c) =>
+                    joinedCommunityIds.includes(c.id) ||
+                    c.adminName === currentUser.name ||
+                    c.ownerId === currentUser.id
+                )
+                .map((comm) => (
+                  <button
+                    key={comm.id}
+                    type="button"
+                    onClick={() => setSelectedChannelCommunity(comm)}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-2xl bg-white border border-slate-200/80 hover:border-[#5B9DFF]/60 hover:shadow-sm transition flex-shrink-0 cursor-pointer group text-left"
+                  >
+                    <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${comm.gradient} text-white flex items-center justify-center font-bold text-sm shadow-xs group-hover:scale-105 transition-transform overflow-hidden`}>
+                      {(comm as any).avatarUrl ? (
+                        <img src={(comm as any).avatarUrl} alt={comm.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{(comm as any).avatarEmoji || '⚡'}</span>
+                      )}
+                    </div>
+                    <div className="max-w-[120px] truncate">
+                      <p className="text-xs font-bold text-slate-800 truncate group-hover:text-[#5B9DFF] transition-colors">
+                        {comm.name}
+                      </p>
+                      <span className="text-[10px] text-slate-400 block truncate">
+                        {comm.members} members
+                      </span>
+                    </div>
+                  </button>
+                ))}
             </div>
           </div>
         )}
@@ -2465,14 +2520,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       return (
                         <div
                           key={community.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-white neu-flat rounded-2xl border border-slate-200/60 shadow-xs hover:border-slate-300/80 transition group"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-white neu-flat rounded-2xl border border-slate-200/60 shadow-xs hover:border-[#5B9DFF]/40 hover:shadow-md transition cursor-pointer group"
+                          onClick={() => setSelectedChannelCommunity(community)}
                         >
-                          <div
-                            onClick={() => setSelectedChannelCommunity(community)}
-                            className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer group/title hover:opacity-95"
-                            title="Tap community logo or name to open community channel"
-                          >
-                            <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${community.gradient} text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover/title:scale-105 transition-transform overflow-hidden relative`}>
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${community.gradient} text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform overflow-hidden relative`}>
                               {(community as any).avatarUrl ? (
                                 <img src={(community as any).avatarUrl} alt={community.name} className="w-full h-full object-cover" />
                               ) : (community as any).avatarEmoji ? (
@@ -2485,7 +2537,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <h4 className="text-sm font-bold text-slate-800 truncate group-hover/title:text-[#5B9DFF] transition-colors">
+                                <h4 className="text-sm font-bold text-slate-800 truncate group-hover:text-[#5B9DFF] transition-colors">
                                   {community.name}
                                 </h4>
                                 {isOwner ? (
@@ -2514,14 +2566,35 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-end gap-2 flex-shrink-0 pt-1 sm:pt-0">
+                          <div className="flex items-center justify-end gap-2 flex-shrink-0 pt-1 sm:pt-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setShareCommunityTarget(community)}
+                              className="p-1.5 rounded-xl text-xs font-bold bg-blue-50 text-[#5B9DFF] border border-blue-200/80 hover:bg-blue-100 transition flex items-center justify-center cursor-pointer shadow-2xs"
+                              title="Share Community"
+                            >
+                              <Share2 className="w-4 h-4 text-[#5B9DFF]" />
+                            </button>
+
+                            {(isJoined || isOwner) && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedChannelCommunity(community)}
+                                className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-[#5B9DFF] text-white hover:bg-blue-600 transition flex items-center gap-1.5 cursor-pointer shadow-xs shadow-[#5B9DFF]/20"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                <span>Open Chat</span>
+                              </button>
+                            )}
+
                             {isOwner ? (
                               <button
+                                type="button"
                                 onClick={() => openOwnerManager(community)}
-                                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 transition flex items-center gap-1.5 cursor-pointer shadow-xs shadow-amber-500/20 relative"
+                                className="p-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200/80 hover:bg-amber-100 transition flex items-center gap-1 cursor-pointer shadow-2xs relative"
+                                title="Community Owner Settings"
                               >
-                                <Settings className="w-3.5 h-3.5" />
-                                <span>Owner Options</span>
+                                <Settings className="w-4 h-4 text-amber-600" />
                                 {reqCount > 0 && (
                                   <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center ring-2 ring-white">
                                     {reqCount}
@@ -2530,17 +2603,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               </button>
                             ) : isJoined ? (
                               <button
+                                type="button"
                                 onClick={() => handleToggleCommunityState(community)}
-                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center gap-1.5 cursor-pointer shadow-xs group/btn"
+                                className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center gap-1 cursor-pointer shadow-xs group/btn"
                                 title="Click to leave community"
                               >
                                 <Check className="w-3.5 h-3.5 group-hover/btn:hidden" />
                                 <X className="w-3.5 h-3.5 hidden group-hover/btn:block" />
-                                <span className="group-hover/btn:hidden">Joined</span>
-                                <span className="hidden group-hover/btn:inline">Leave</span>
+                                <span className="group-hover/btn:hidden text-[11px]">Joined</span>
+                                <span className="hidden group-hover/btn:inline text-[11px]">Leave</span>
                               </button>
                             ) : isPending ? (
                               <button
+                                type="button"
                                 onClick={() => handleToggleCommunityState(community)}
                                 className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-600 border border-amber-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center gap-1.5 cursor-pointer shadow-xs group/btn"
                                 title="Click to cancel join request"
@@ -2552,6 +2627,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               </button>
                             ) : community.isPrivate ? (
                               <button
+                                type="button"
                                 onClick={() => handleToggleCommunityState(community)}
                                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
                               >
@@ -2560,6 +2636,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               </button>
                             ) : (
                               <button
+                                type="button"
                                 onClick={() => handleToggleCommunityState(community)}
                                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#5B9DFF] text-white hover:bg-blue-600 transition flex items-center gap-1.5 cursor-pointer shadow-xs shadow-[#5B9DFF]/20"
                               >
@@ -2927,6 +3004,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
           onShowToast={(msg, type) => triggerCommunityToast(msg, type || 'info')}
         />
       )}
+
+      {/* Share Community Modal */}
+      <ShareCommunityModal
+        community={shareCommunityTarget}
+        isOpen={shareCommunityTarget !== null}
+        onClose={() => setShareCommunityTarget(null)}
+        users={MOCK_USERS}
+        onShowToast={(msg, type) => triggerCommunityToast(msg, (type as any) || 'info')}
+      />
 
       {/* Floating Real-Time Toast Notification */}
       <AnimatePresence>

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ShareCommunityModal } from './ShareCommunityModal';
 import {
   X,
   Crown,
@@ -27,7 +28,8 @@ import {
   Volume2,
   Ban,
   Flag,
-  UserCheck
+  UserCheck,
+  Share2
 } from 'lucide-react';
 
 export interface CommunityMember {
@@ -131,6 +133,38 @@ export const CommunityAdminSettingsModal: React.FC<CommunityAdminSettingsModalPr
     { id: 'm4', name: 'Sam Wilson', role: 'Member', status: 'Offline', joinedDate: 'Joined 3d ago' },
     { id: 'm5', name: 'Taylor Swift', role: 'Member', status: 'Online', joinedDate: 'Joined 1d ago' },
   ]);
+
+  // Share Community State
+  const [showAdminShareModal, setShowAdminShareModal] = useState(false);
+
+  // Admin Add Member State
+  const [showAdminAddMemberForm, setShowAdminAddMemberForm] = useState(false);
+  const [adminNewMemberName, setAdminNewMemberName] = useState('');
+  const [adminNewMemberRole, setAdminNewMemberRole] = useState<CommunityMember['role']>('Member');
+
+  const handleAdminAddMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminNewMemberName.trim()) return;
+    const cleanName = adminNewMemberName.trim();
+    const existing = membersList.find((m) => m.name.toLowerCase() === cleanName.toLowerCase());
+    if (existing) {
+      if (onShowToast) onShowToast(`${cleanName} is already in the roster.`, 'info');
+      return;
+    }
+    const newM: CommunityMember = {
+      id: `m_${Date.now()}`,
+      name: cleanName,
+      role: adminNewMemberRole,
+      status: 'Online',
+      joinedDate: 'Joined just now',
+    };
+    setMembersList((prev) => [...prev, newM]);
+    setAdminNewMemberName('');
+    setShowAdminAddMemberForm(false);
+    if (onShowToast) {
+      onShowToast(`Added ${cleanName} as ${adminNewMemberRole}! 🎉`, 'success');
+    }
+  };
 
   // Permissions State
   const [permissions, setPermissions] = useState<CommunityPermissions>({
@@ -307,12 +341,23 @@ export const CommunityAdminSettingsModal: React.FC<CommunityAdminSettingsModalPr
                 <p className="text-[11px] text-slate-500">Admin Settings & Role Management</p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer flex-shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowAdminShareModal(true)}
+                className="h-8 px-2.5 rounded-full bg-blue-50 text-[#5B9DFF] hover:bg-blue-100 transition flex items-center gap-1 text-xs font-bold cursor-pointer"
+                title="Share Community"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Share</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Tab Navigation */}
@@ -645,10 +690,62 @@ export const CommunityAdminSettingsModal: React.FC<CommunityAdminSettingsModalPr
 
                 {/* Members List with Role Selector & Owner Moderation Rights */}
                 <div className="space-y-2">
-                  <h4 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center justify-between px-1">
-                    <span>Community Roster & Moderation</span>
-                    <span>{filteredMembers.filter(m => !m.isBlocked).length} Members</span>
-                  </h4>
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                      Community Roster & Moderation ({filteredMembers.filter((m) => !m.isBlocked).length})
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminAddMemberForm(!showAdminAddMemberForm)}
+                      className="px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>{showAdminAddMemberForm ? 'Cancel' : 'Add Member'}</span>
+                    </button>
+                  </div>
+
+                  {/* Inline Add Member Form */}
+                  {showAdminAddMemberForm && (
+                    <form
+                      onSubmit={handleAdminAddMember}
+                      className="p-3 bg-indigo-50/70 rounded-2xl border border-indigo-200 space-y-2.5 animate-in fade-in"
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={adminNewMemberName}
+                          onChange={(e) => setAdminNewMemberName(e.target.value)}
+                          placeholder="Enter user name or handle..."
+                          className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium"
+                        />
+                        <select
+                          value={adminNewMemberRole}
+                          onChange={(e) => setAdminNewMemberRole(e.target.value as any)}
+                          className="bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                        >
+                          <option value="Member">Member</option>
+                          <option value="Moderator">Moderator ⚡</option>
+                          <option value="Admin">Admin 🛡️</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminAddMemberForm(false)}
+                          className="px-2.5 py-1 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-200/60"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={!adminNewMemberName.trim()}
+                          className="px-3 py-1 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition disabled:opacity-40 cursor-pointer shadow-xs flex items-center gap-1"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" /> Add to Roster
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
                   <div className="space-y-2 max-h-[260px] overflow-y-auto no-scrollbar pr-0.5">
                     {filteredMembers.map((m) => {
@@ -970,6 +1067,14 @@ export const CommunityAdminSettingsModal: React.FC<CommunityAdminSettingsModalPr
             </motion.div>
           </div>
         )}
+
+        {/* Share Community Modal */}
+        <ShareCommunityModal
+          community={community}
+          isOpen={showAdminShareModal}
+          onClose={() => setShowAdminShareModal(false)}
+          onShowToast={onShowToast}
+        />
       </div>
     </AnimatePresence>
   );

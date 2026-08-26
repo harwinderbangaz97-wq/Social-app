@@ -1,8 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ShareCommunityModal } from './ShareCommunityModal';
 import {
-  X,
+  ArrowLeft,
+  MoreVertical,
+  Bell,
+  BellOff,
+  Image as ImageIcon,
+  Camera,
+  Mic,
   Send,
+  Smile,
+  Play,
+  Pause,
+  CheckCheck,
+  Heart,
+  ThumbsUp,
+  Flame,
+  Laugh,
+  Share2,
+  LogOut,
+  Settings,
   Lock,
   Globe,
   Crown,
@@ -10,22 +28,52 @@ import {
   Users,
   MessageSquare,
   Info,
-  Settings,
-  VolumeX,
-  AlertTriangle,
-  Smile,
-  Paperclip,
   CheckCircle2,
-  Share2
+  VolumeX,
+  Volume2,
+  Search,
+  Sparkles,
+  Paperclip,
+  Trash2,
+  UserMinus,
+  Ban,
+  FileText,
+  Film,
+  X,
+  Square,
+  UserPlus,
+  Plus,
+  UserCheck,
+  Zap
 } from 'lucide-react';
 
-interface CommunityMessage {
+export interface CommunityMessage {
   id: string;
   senderName: string;
-  senderRole?: 'Owner' | 'Admin' | 'Member';
-  text: string;
+  senderRole?: 'Owner' | 'Admin' | 'Moderator' | 'Member';
+  senderAvatar?: string;
+  text?: string;
   timestamp: string;
-  isOwnerMsg?: boolean;
+  isMe?: boolean;
+  audioDuration?: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  fileAttachment?: {
+    name: string;
+    size: string;
+    type: string;
+    url: string;
+  };
+  reactions?: { emoji: string; count: number; reacted?: boolean }[];
+}
+
+export interface RosterMember {
+  id: string;
+  name: string;
+  role: 'Owner' | 'Admin' | 'Moderator' | 'Member';
+  badge: string;
+  isMuted?: boolean;
+  isBlocked?: boolean;
 }
 
 interface CommunityChannelModalProps {
@@ -66,46 +114,283 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'chat' | 'info' | 'members'>('chat');
   const [inputText, setInputText] = useState('');
+  const [isNotifMuted, setIsNotifMuted] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  
+  // Media & File Attachments State
+  const [attachedMedia, setAttachedMedia] = useState<{
+    type: 'image' | 'video' | 'file';
+    url: string;
+    name?: string;
+    size?: string;
+  } | null>(null);
+
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // Hidden File Inputs
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Voice Note Recording State
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const recordingTimerRef = useRef<any>(null);
+
+  // Community Roster State
+  const [rosterMembers, setRosterMembers] = useState<RosterMember[]>([
+    { id: 'mem1', name: community.adminName || 'Community Owner', role: 'Owner', badge: '👑 Owner' },
+    { id: 'mem2', name: 'Alex Rivera', role: 'Admin', badge: '🛡️ Admin' },
+    { id: 'mem3', name: 'Jordan Smith', role: 'Moderator', badge: '⚡ Mod' },
+    { id: 'mem4', name: 'Sam Wilson', role: 'Member', badge: 'Member' },
+    { id: 'mem5', name: 'Taylor Swift', role: 'Member', badge: 'Member' },
+  ]);
+
+  // Add Member State
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState<'Member' | 'Admin' | 'Moderator'>('Member');
+  const [contactsSearchQuery, setContactsSearchQuery] = useState('');
+
+  const SUGGESTED_CONTACTS = [
+    { id: 'sug1', name: 'Emily Chen', username: '@emily_c', avatarBg: 'from-pink-500 to-rose-500' },
+    { id: 'sug2', name: 'Marcus Vance', username: '@marcus_v', avatarBg: 'from-cyan-500 to-blue-500' },
+    { id: 'sug3', name: 'Priya Sharma', username: '@priya_s', avatarBg: 'from-amber-500 to-orange-500' },
+    { id: 'sug4', name: 'David Miller', username: '@david_m', avatarBg: 'from-emerald-500 to-teal-500' },
+    { id: 'sug5', name: 'Sarah Connor', username: '@sarah_c', avatarBg: 'from-purple-500 to-indigo-500' },
+  ];
+
+  const handleAddMember = (nameToAdd: string, roleToAdd: 'Member' | 'Admin' | 'Moderator' = 'Member') => {
+    const cleanName = nameToAdd.trim();
+    if (!cleanName) return;
+
+    const existing = rosterMembers.find((m) => m.name.toLowerCase() === cleanName.toLowerCase());
+    if (existing) {
+      if (onShowToast) onShowToast(`${cleanName} is already a member of this community.`, 'info');
+      return;
+    }
+
+    const badgeStr = roleToAdd === 'Admin' ? '🛡️ Admin' : roleToAdd === 'Moderator' ? '⚡ Mod' : 'Member';
+    const newMemberObj: RosterMember = {
+      id: `mem_${Date.now()}`,
+      name: cleanName,
+      role: roleToAdd,
+      badge: badgeStr,
+    };
+
+    setRosterMembers((prev) => [...prev, newMemberObj]);
+    setNewMemberName('');
+    setShowAddMemberModal(false);
+
+    // Announce member join in chat feed
+    const systemMsg: CommunityMessage = {
+      id: Date.now().toString(),
+      senderName: 'System Announcement',
+      text: `🎉 ${cleanName} was added to ${community.name} as ${roleToAdd}! Welcome to the community!`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      reactions: [{ emoji: '👋', count: 3, reacted: false }],
+    };
+    setMessages((prev) => [...prev, systemMsg]);
+
+    if (onShowToast) {
+      onShowToast(`Added ${cleanName} to ${community.name}! 🎉`, 'success');
+    }
+  };
+
+  // Messages State
   const [messages, setMessages] = useState<CommunityMessage[]>([
     {
       id: 'm1',
-      senderName: community.adminName || 'Community Creator',
+      senderName: community.adminName || 'Community Owner',
       senderRole: 'Owner',
       text: `Welcome everyone to ${community.name}! 🎉 Feel free to share ideas and ask questions here in our general channel.`,
-      timestamp: 'Today at 10:00 AM',
-      isOwnerMsg: true,
+      timestamp: '10:00 AM',
+      isMe: isOwner,
+      reactions: [
+        { emoji: '❤️', count: 8, reacted: true },
+        { emoji: '🔥', count: 5, reacted: false },
+        { emoji: '🙌', count: 3, reacted: false },
+      ],
     },
     {
       id: 'm2',
       senderName: 'Alex Rivera',
       senderRole: 'Admin',
-      text: 'Glad to be here! Looking forward to collaborating with everyone.',
-      timestamp: 'Today at 10:15 AM',
+      text: 'Glad to be here! Check out the latest design mockups we uploaded.',
+      timestamp: '10:15 AM',
+      imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
+      reactions: [{ emoji: '👍', count: 4, reacted: false }],
     },
     {
       id: 'm3',
       senderName: 'Jordan Smith',
-      senderRole: 'Member',
-      text: community.lastMessage || 'Hey team! Anyone working on new projects this week?',
-      timestamp: 'Today at 11:30 AM',
+      senderRole: 'Moderator',
+      timestamp: '11:05 AM',
+      audioDuration: '0:18',
+      reactions: [{ emoji: '🎧', count: 2, reacted: false }],
+    },
+    {
+      id: 'm4',
+      senderName: 'You',
+      senderRole: isOwner ? 'Owner' : 'Member',
+      text: community.lastMessage || 'Hey team! Anyone working on new updates this afternoon?',
+      timestamp: '11:30 AM',
+      isMe: true,
+      reactions: [{ emoji: '❤️', count: 1, reacted: true }],
     },
   ]);
 
+  // Voice recording timer effect
+  useEffect(() => {
+    if (isRecordingVoice) {
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    }
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    };
+  }, [isRecordingVoice]);
+
+  if (!isOpen) return null;
+
+  // Notification Toggle
+  const handleToggleNotif = () => {
+    setIsNotifMuted(!isNotifMuted);
+    if (onShowToast) {
+      onShowToast(
+        !isNotifMuted
+          ? `Muted notifications for ${community.name} 🔕`
+          : `Enabled notifications for ${community.name} 🔔`,
+        'info'
+      );
+    }
+  };
+
+  // Media Pickers Event Handlers
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileUrl = URL.createObjectURL(file);
+    const isVideo = file.type.startsWith('video');
+
+    setAttachedMedia({
+      type: isVideo ? 'video' : 'image',
+      url: fileUrl,
+      name: file.name,
+      size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+    });
+
+    if (onShowToast) {
+      onShowToast(`${isVideo ? 'Video' : 'Photo'} attached! Tap send to post. 📷`, 'info');
+    }
+  };
+
+  const handleDocumentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileUrl = URL.createObjectURL(file);
+    setAttachedMedia({
+      type: 'file',
+      url: fileUrl,
+      name: file.name,
+      size: `${(file.size / 1024).toFixed(0)} KB`,
+    });
+
+    if (onShowToast) {
+      onShowToast(`File "${file.name}" attached! 📄`, 'info');
+    }
+  };
+
+  // Voice Note Recording Handlers
+  const handleStartVoiceRecord = () => {
+    if (isMuted) {
+      if (onShowToast) onShowToast('You are muted and cannot record voice notes.', 'warning');
+      return;
+    }
+    setIsRecordingVoice(true);
+  };
+
+  const handleCancelVoiceRecord = () => {
+    setIsRecordingVoice(false);
+    setRecordingSeconds(0);
+  };
+
+  const handleSendVoiceRecord = () => {
+    setIsRecordingVoice(false);
+    const durationStr = `0:${recordingSeconds < 10 ? '0' : ''}${recordingSeconds || 5}`;
+
+    const voiceMsg: CommunityMessage = {
+      id: Date.now().toString(),
+      senderName: isOwner ? `${community.adminName} (You)` : 'You',
+      senderRole: isOwner ? 'Owner' : 'Member',
+      audioDuration: durationStr,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isMe: true,
+      reactions: [],
+    };
+
+    setMessages((prev) => [...prev, voiceMsg]);
+    setRecordingSeconds(0);
+    if (onShowToast) onShowToast('Voice note recorded & sent 🎙️', 'success');
+  };
+
+  // Play audio sound synthesizer using Web Audio API
+  const handlePlayAudioSynthesizer = (msgId: string) => {
+    if (playingAudioId === msgId) {
+      setPlayingAudioId(null);
+      return;
+    }
+
+    setPlayingAudioId(msgId);
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.4);
+
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+
+        setTimeout(() => {
+          setPlayingAudioId(null);
+        }, 1500);
+      }
+    } catch (err) {
+      setTimeout(() => setPlayingAudioId(null), 1500);
+    }
+  };
+
+  // Send Chat Message
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && !attachedMedia) return;
 
     if (isMuted) {
-      if (onShowToast) {
-        onShowToast('You are muted by the community owner and cannot send messages.', 'warning');
-      }
+      if (onShowToast) onShowToast('You are muted by community owner and cannot post.', 'warning');
       return;
     }
 
     if (!isJoined && !isOwner) {
-      if (onShowToast) {
-        onShowToast('Join this community first to participate in discussions.', 'info');
-      }
+      if (onShowToast) onShowToast('Please join this community first to send messages.', 'info');
       return;
     }
 
@@ -113,158 +398,416 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
       id: Date.now().toString(),
       senderName: isOwner ? `${community.adminName} (You)` : 'You',
       senderRole: isOwner ? 'Owner' : 'Member',
-      text: inputText.trim(),
-      timestamp: 'Just now',
-      isOwnerMsg: isOwner,
+      text: inputText.trim() || undefined,
+      imageUrl: attachedMedia?.type === 'image' ? attachedMedia.url : undefined,
+      videoUrl: attachedMedia?.type === 'video' ? attachedMedia.url : undefined,
+      fileAttachment:
+        attachedMedia?.type === 'file'
+          ? {
+              name: attachedMedia.name || 'document.pdf',
+              size: attachedMedia.size || '120 KB',
+              type: 'document',
+              url: attachedMedia.url,
+            }
+          : undefined,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isMe: true,
+      reactions: [],
     };
 
     setMessages((prev) => [...prev, newMsg]);
     setInputText('');
+    setAttachedMedia(null);
   };
 
-  if (!isOpen) return null;
+  // Admin Controls: Delete Any Message
+  const handleDeleteMessage = (msgId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    if (onShowToast) onShowToast('Message deleted by community admin 🗑️', 'info');
+  };
+
+  // Admin Controls: Member Roster Moderation (Mute / Unmute / Remove / Block)
+  const handleToggleMuteMember = (memberId: string) => {
+    setRosterMembers((prev) =>
+      prev.map((mem) => {
+        if (mem.id === memberId) {
+          const nextState = !mem.isMuted;
+          if (onShowToast) {
+            onShowToast(
+              nextState ? `${mem.name} has been muted 🔇` : `${mem.name} has been unmuted 🔊`,
+              nextState ? 'warning' : 'success'
+            );
+          }
+          return { ...mem, isMuted: nextState };
+        }
+        return mem;
+      })
+    );
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    const target = rosterMembers.find((m) => m.id === memberId);
+    setRosterMembers((prev) => prev.filter((m) => m.id !== memberId));
+    if (onShowToast && target) {
+      onShowToast(`${target.name} removed from community.`, 'info');
+    }
+  };
+
+  const handleBlockMember = (memberId: string) => {
+    const target = rosterMembers.find((m) => m.id === memberId);
+    setRosterMembers((prev) => prev.filter((m) => m.id !== memberId));
+    if (onShowToast && target) {
+      onShowToast(`${target.name} blocked from community 🚫`, 'warning');
+    }
+  };
+
+  // Emoji Reaction Toggle
+  const handleToggleReaction = (msgId: string, targetEmoji: string) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== msgId) return msg;
+        const currentReactions = msg.reactions || [];
+        const existing = currentReactions.find((r) => r.emoji === targetEmoji);
+
+        let updatedReactions;
+        if (existing) {
+          if (existing.reacted) {
+            updatedReactions = currentReactions
+              .map((r) => (r.emoji === targetEmoji ? { ...r, count: r.count - 1, reacted: false } : r))
+              .filter((r) => r.count > 0);
+          } else {
+            updatedReactions = currentReactions.map((r) =>
+              r.emoji === targetEmoji ? { ...r, count: r.count + 1, reacted: true } : r
+            );
+          }
+        } else {
+          updatedReactions = [...currentReactions, { emoji: targetEmoji, count: 1, reacted: true }];
+        }
+        return { ...msg, reactions: updatedReactions };
+      })
+    );
+  };
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/65 backdrop-blur-xs animate-in fade-in">
-        <motion.div
-          initial={{ scale: 0.94, opacity: 0, y: 12 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.94, opacity: 0, y: 12 }}
-          className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden"
-        >
-          {/* Banner & Header */}
-          <div className={`relative h-28 bg-gradient-to-tr ${community.gradient} p-4 flex items-end justify-between text-white`}>
-            {/* Close Button */}
-            <button
-              onClick={onClose}
-              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/50 transition cursor-pointer z-10"
-            >
-              <X className="w-4 h-4" />
-            </button>
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 bg-[#F8FAFC] flex flex-col w-full h-full overflow-hidden font-sans"
+    >
+      {/* Hidden native input pickers for camera roll & file attachments */}
+      <input
+        type="file"
+        ref={photoInputRef}
+        onChange={handlePhotoSelect}
+        accept="image/*,video/*"
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={cameraInputRef}
+        onChange={handlePhotoSelect}
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleDocumentSelect}
+        accept=".pdf,.doc,.docx,.txt,.zip"
+        className="hidden"
+      />
 
-            {/* Community Avatar & Info */}
-            <div className="flex items-end gap-3 translate-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-white p-1 shadow-lg flex-shrink-0 relative overflow-hidden">
-                <div className={`w-full h-full rounded-xl bg-gradient-to-tr ${community.gradient} text-white flex items-center justify-center font-black overflow-hidden relative`}>
-                  {community.avatarUrl ? (
-                    <img src={community.avatarUrl} alt={community.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-3xl">{community.avatarEmoji || '⚡'}</span>
-                  )}
-                </div>
+      {/* 1. Header Bar: Clean White Top App Bar */}
+      <header className="bg-white border-b border-slate-200/80 px-3 sm:px-4 py-2.5 flex items-center justify-between flex-shrink-0 z-30 shadow-2xs">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* Back Button */}
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-700 transition cursor-pointer flex-shrink-0"
+            title="Back to Communities"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+
+          {/* Community Avatar / Profile */}
+          <div
+            onClick={() => setActiveTab('info')}
+            className="flex items-center gap-2.5 cursor-pointer min-w-0 group"
+          >
+            <div className="relative flex-shrink-0">
+              <div className={`w-10 h-10 rounded-2xl bg-gradient-to-tr ${community.gradient} text-white flex items-center justify-center font-bold shadow-xs overflow-hidden`}>
+                {community.avatarUrl ? (
+                  <img src={community.avatarUrl} alt={community.name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xl">{community.avatarEmoji || '⚡'}</span>
+                )}
               </div>
-              <div className="mb-1 text-slate-900">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h3 className="text-base font-black text-slate-900 drop-shadow-xs">{community.name}</h3>
-                  {isOwner ? (
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                      <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-500" /> Owner
-                    </span>
-                  ) : community.isPrivate ? (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
-                      <Lock className="w-2.5 h-2.5 text-amber-600" /> Private
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-                      <Globe className="w-2.5 h-2.5 text-blue-600" /> Public
-                    </span>
+              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-white" title="Active now" />
+            </div>
+
+            {/* Title & Online Status */}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 truncate">
+                <h2 className="text-sm font-extrabold text-slate-900 truncate group-hover:text-[#5B9DFF] transition-colors">
+                  {community.name}
+                </h2>
+                {isOwner ? (
+                  <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-400 flex-shrink-0" />
+                ) : community.isPrivate ? (
+                  <Lock className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                ) : (
+                  <Globe className="w-3 h-3 text-blue-600 flex-shrink-0" />
+                )}
+              </div>
+              <span className="text-[11px] font-medium text-slate-400 block truncate">
+                {rosterMembers.length} members • 18 online
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Header Controls */}
+        <div className="flex items-center gap-1 flex-shrink-0 relative">
+          {/* Share Community Button */}
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="w-9 h-9 rounded-full bg-blue-50/80 hover:bg-blue-100 flex items-center justify-center text-[#5B9DFF] transition cursor-pointer"
+            title="Share Community"
+          >
+            <Share2 className="w-4.5 h-4.5" />
+          </button>
+
+          {/* Notification Bell */}
+          <button
+            onClick={handleToggleNotif}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${
+              isNotifMuted
+                ? 'text-slate-400 hover:bg-slate-100'
+                : 'text-amber-500 bg-amber-50 hover:bg-amber-100'
+            }`}
+            title={isNotifMuted ? 'Unmute Notifications' : 'Mute Notifications'}
+          >
+            {isNotifMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+          </button>
+
+          {/* Vertical Three-Dots Menu Toggle */}
+          <button
+            onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+            className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-700 transition cursor-pointer"
+            title="Community Options"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
+
+          {/* Options Dropdown Menu */}
+          <AnimatePresence>
+            {showOptionsMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowOptionsMenu(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                  className="absolute right-0 top-11 z-50 w-56 bg-white rounded-2xl shadow-xl border border-slate-200/80 p-1.5 space-y-1 text-xs font-semibold text-slate-700"
+                >
+                  <button
+                    onClick={() => {
+                      setActiveTab('info');
+                      setShowOptionsMenu(false);
+                    }}
+                    className="w-full px-3 py-2 text-left rounded-xl hover:bg-slate-50 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <Info className="w-4 h-4 text-indigo-500" />
+                    <span>Community Info & Rules</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveTab('members');
+                      setShowOptionsMenu(false);
+                    }}
+                    className="w-full px-3 py-2 text-left rounded-xl hover:bg-slate-50 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <Users className="w-4 h-4 text-emerald-500" />
+                    <span>View Members Roster</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowOptionsMenu(false);
+                      setShowAddMemberModal(true);
+                    }}
+                    className="w-full px-3 py-2 text-left rounded-xl hover:bg-slate-50 flex items-center gap-2 transition cursor-pointer text-[#5B9DFF] font-bold"
+                  >
+                    <UserPlus className="w-4 h-4 text-[#5B9DFF]" />
+                    <span>Add Member</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowOptionsMenu(false);
+                      setShowShareModal(true);
+                    }}
+                    className="w-full px-3 py-2 text-left rounded-xl hover:bg-slate-50 flex items-center gap-2 transition cursor-pointer text-slate-800 font-bold"
+                  >
+                    <Share2 className="w-4 h-4 text-[#5B9DFF]" />
+                    <span>Share Community 🔗</span>
+                  </button>
+
+                  {isOwner && (
+                    <button
+                      onClick={() => {
+                        setShowOptionsMenu(false);
+                        onOpenOwnerAdmin();
+                      }}
+                      className="w-full px-3 py-2 text-left rounded-xl bg-amber-50/80 hover:bg-amber-100/80 text-amber-900 font-bold flex items-center gap-2 transition cursor-pointer border border-amber-200/60"
+                    >
+                      <Settings className="w-4 h-4 text-amber-600" />
+                      <span>Owner Admin Settings ⚙️</span>
+                    </button>
                   )}
+
+                  <button
+                    onClick={() => {
+                      handleToggleNotif();
+                      setShowOptionsMenu(false);
+                    }}
+                    className="w-full px-3 py-2 text-left rounded-xl hover:bg-slate-50 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    {isNotifMuted ? <Bell className="w-4 h-4 text-amber-500" /> : <BellOff className="w-4 h-4 text-slate-400" />}
+                    <span>{isNotifMuted ? 'Unmute Notifications' : 'Mute Notifications'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowOptionsMenu(false);
+                      if (onShowToast) onShowToast('Community invite link copied to clipboard! 📋', 'success');
+                    }}
+                    className="w-full px-3 py-2 text-left rounded-xl hover:bg-slate-50 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <Share2 className="w-4 h-4 text-blue-500" />
+                    <span>Share Community</span>
+                  </button>
+
+                  <div className="h-px bg-slate-100 my-1" />
+
+                  <button
+                    onClick={() => {
+                      setShowOptionsMenu(false);
+                      onJoinToggle();
+                    }}
+                    className="w-full px-3 py-2 text-left rounded-xl hover:bg-rose-50 text-rose-600 font-bold flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-500" />
+                    <span>{isJoined ? 'Leave Community' : 'Join Community'}</span>
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
+      </header>
+
+      {/* 2. Segmented Channel Navigation Bar */}
+      <div className="bg-white border-b border-slate-200/80 px-4 py-2 flex items-center justify-between flex-shrink-0 z-20">
+        <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl w-full max-w-lg mx-auto">
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'chat'
+                ? 'bg-white text-slate-900 shadow-xs font-extrabold'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-[#5B9DFF]" />
+            <span># general-chat</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('info')}
+            className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'info'
+                ? 'bg-white text-slate-900 shadow-xs font-extrabold'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Info className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Guidelines</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('members')}
+            className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'members'
+                ? 'bg-white text-slate-900 shadow-xs font-extrabold'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Members ({rosterMembers.length})</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Main Body View */}
+      <div className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col justify-between">
+        {/* TAB 1: FULL SCREEN DIRECT-MESSAGE CHAT CANVAS */}
+        {activeTab === 'chat' && (
+          <div className="flex flex-col flex-1 h-full justify-between">
+            {/* Scrollable Messages Container */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 no-scrollbar">
+              {/* Top Welcome Banner */}
+              <div className="max-w-md mx-auto p-4 bg-white/90 backdrop-blur-xs rounded-2xl border border-slate-200/80 shadow-2xs text-center space-y-1.5 my-2">
+                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${community.gradient} text-white flex items-center justify-center font-bold text-2xl mx-auto shadow-sm`}>
+                  {community.avatarEmoji || '⚡'}
                 </div>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  {community.category} • {community.members} Members
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  Welcome to #{community.name}
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                  This is the official channel start for {community.name}. Stay respectful, follow guidelines, and enjoy chatting!
                 </p>
+                <div className="pt-1 flex items-center justify-center gap-2">
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    Category: {community.category}
+                  </span>
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                    {rosterMembers.length} Members
+                  </span>
+                </div>
               </div>
-            </div>
 
-            {/* Top Header Actions */}
-            <div className="flex items-center gap-2 mb-1">
-              {isOwner ? (
-                <button
-                  onClick={() => {
-                    onClose();
-                    onOpenOwnerAdmin();
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-900 hover:bg-slate-100 text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Settings className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Admin Settings</span>
-                </button>
-              ) : (
-                <button
-                  onClick={onJoinToggle}
-                  className={`px-3.5 py-1.5 text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer ${
-                    isJoined
-                      ? 'bg-white/90 text-slate-800 hover:bg-white'
-                      : 'bg-slate-900 text-white hover:bg-slate-800'
-                  }`}
-                >
-                  {isJoined ? 'Joined ✓' : community.isPrivate ? 'Request Join 🔒' : 'Join Community 🌐'}
-                </button>
-              )}
-            </div>
-          </div>
+              {/* Chat Messages List */}
+              {messages.map((m) => {
+                const isMe = m.isMe;
+                const canAdminDelete = isOwner || isMe || m.senderRole === 'Owner' || m.senderRole === 'Admin';
 
-          {/* Sub Navigation */}
-          <div className="pt-7 px-4 pb-2 border-b border-slate-100 flex items-center justify-between bg-white flex-shrink-0">
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl w-full">
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'chat' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-[#5B9DFF]" />
-                <span># general-chat</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('info')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'info' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Info className="w-3.5 h-3.5 text-indigo-500" />
-                <span>About & Guidelines</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('members')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'members' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Members ({community.members})</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Body Content */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 no-scrollbar">
-            {/* TAB 1: General Community Chat */}
-            {activeTab === 'chat' && (
-              <div className="flex flex-col h-full justify-between space-y-3">
-                {/* Messages Feed */}
-                <div className="space-y-3 flex-1 overflow-y-auto max-h-[320px] pr-1 no-scrollbar">
-                  <div className="p-3 bg-blue-50/80 rounded-2xl border border-blue-100 text-center space-y-1">
-                    <p className="text-xs font-bold text-blue-900">
-                      Welcome to the official #{community.name} group channel!
-                    </p>
-                    <p className="text-[11px] text-blue-700/80">
-                      All messages are visible to verified community members.
-                    </p>
-                  </div>
-
-                  {messages.map((m) => (
-                    <div key={m.id} className="flex items-start gap-2.5 group">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-xs flex-shrink-0 shadow-2xs mt-0.5">
+                return (
+                  <div
+                    key={m.id}
+                    className={`flex items-end gap-2.5 max-w-xl group ${
+                      isMe ? 'ml-auto flex-row-reverse' : 'mr-auto'
+                    }`}
+                  >
+                    {/* Incoming Sender Avatar */}
+                    {!isMe && (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-xs flex-shrink-0 shadow-2xs mb-1">
                         {m.senderName.charAt(0)}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-slate-800">{m.senderName}</span>
+                    )}
+
+                    <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%] sm:max-w-[75%]`}>
+                      {/* Sender Name & Role Badges */}
+                      {!isMe && (
+                        <div className="flex items-center gap-1.5 mb-1 px-1">
+                          <span className="text-[11px] font-bold text-slate-700">{m.senderName}</span>
                           {m.senderRole === 'Owner' && (
                             <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[9px] font-black rounded-full border border-amber-300 flex items-center gap-0.5">
-                              <Crown className="w-2 h-2 text-amber-600 fill-amber-500" /> Owner
+                              <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-500" /> Owner
                             </span>
                           )}
                           {m.senderRole === 'Admin' && (
@@ -272,129 +815,624 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                               Admin 🛡️
                             </span>
                           )}
-                          <span className="text-[10px] text-slate-400">{m.timestamp}</span>
+                          {m.senderRole === 'Moderator' && (
+                            <span className="px-1.5 py-0.2 bg-amber-50 text-amber-800 text-[9px] font-extrabold rounded-full border border-amber-200">
+                              Mod ⚡
+                            </span>
+                          )}
                         </div>
-                        <div className="mt-1 p-3 bg-white rounded-2xl rounded-tl-xs border border-slate-200/80 text-xs text-slate-800 shadow-2xs leading-relaxed font-normal">
-                          {m.text}
+                      )}
+
+                      {/* Message Bubble Container */}
+                      <div
+                        className={`p-3.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed shadow-2xs relative group/bubble ${
+                          isMe
+                            ? 'bg-gradient-to-r from-[#5B9DFF] to-blue-600 text-white rounded-br-xs'
+                            : 'bg-white text-slate-800 rounded-bl-xs border border-slate-200/80'
+                        }`}
+                      >
+                        {/* Admin Delete Action Button on Bubble Hover */}
+                        {canAdminDelete && (
+                          <button
+                            onClick={() => handleDeleteMessage(m.id)}
+                            className={`absolute -top-2 ${isMe ? '-left-2' : '-right-2'} opacity-0 group-hover/bubble:opacity-100 transition p-1 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-full border border-slate-200 shadow-sm cursor-pointer`}
+                            title="Admin Delete Message"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+
+                        {/* Text Content */}
+                        {m.text && <p className="whitespace-pre-wrap">{m.text}</p>}
+
+                        {/* Image Attachment Preview */}
+                        {m.imageUrl && (
+                          <div
+                            onClick={() => setPreviewImage(m.imageUrl || null)}
+                            className="mt-2 rounded-xl overflow-hidden cursor-pointer hover:opacity-95 transition border border-black/10 max-w-xs"
+                          >
+                            <img src={m.imageUrl} alt="Attached media" className="w-full h-44 object-cover" />
+                          </div>
+                        )}
+
+                        {/* Video Attachment Preview */}
+                        {m.videoUrl && (
+                          <div className="mt-2 rounded-xl overflow-hidden border border-black/10 max-w-xs bg-black">
+                            <video src={m.videoUrl} controls className="w-full max-h-48 object-cover rounded-xl" />
+                          </div>
+                        )}
+
+                        {/* Generic File Attachment */}
+                        {m.fileAttachment && (
+                          <div className={`mt-2 p-2.5 rounded-xl flex items-center gap-3 border ${
+                            isMe ? 'bg-white/15 border-white/20 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
+                          }`}>
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                              isMe ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'
+                            }`}>
+                              <FileText className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0 text-left">
+                              <p className="text-xs font-bold truncate">{m.fileAttachment.name}</p>
+                              <span className={`text-[10px] ${isMe ? 'text-blue-100' : 'text-slate-400'}`}>
+                                {m.fileAttachment.size}
+                              </span>
+                            </div>
+                            <a
+                              href={m.fileAttachment.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`px-2 py-1 text-[10px] font-bold rounded-lg ${
+                                isMe ? 'bg-white text-blue-600' : 'bg-blue-600 text-white'
+                              }`}
+                            >
+                              Open
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Voice Note Audio Widget */}
+                        {m.audioDuration && (
+                          <div className={`flex items-center gap-3 p-2 rounded-xl ${isMe ? 'bg-white/15' : 'bg-slate-100'}`}>
+                            <button
+                              onClick={() => handlePlayAudioSynthesizer(m.id)}
+                              className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${
+                                isMe ? 'bg-white text-[#5B9DFF]' : 'bg-[#5B9DFF] text-white'
+                              }`}
+                            >
+                              {playingAudioId === m.id ? <Pause className="w-4 h-4 animate-pulse" /> : <Play className="w-4 h-4 ml-0.5" />}
+                            </button>
+                            <div className="flex-1 space-y-1">
+                              <div className="h-4 flex items-center gap-0.5">
+                                {[40, 70, 30, 90, 60, 100, 40, 80, 50, 90, 30, 70, 40, 80, 60, 30].map((h, i) => (
+                                  <div
+                                    key={i}
+                                    style={{ height: `${h}%` }}
+                                    className={`w-1 rounded-full ${
+                                      isMe ? 'bg-white/80' : 'bg-blue-400'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                              <div className={`text-[10px] font-bold ${isMe ? 'text-blue-100' : 'text-slate-500'}`}>
+                                Voice Note • {m.audioDuration}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Timestamp & Status */}
+                        <div
+                          className={`text-[10px] font-semibold mt-1.5 flex items-center justify-end gap-1 ${
+                            isMe ? 'text-blue-100' : 'text-slate-400'
+                          }`}
+                        >
+                          <span>{m.timestamp}</span>
+                          {isMe && <CheckCheck className="w-3.5 h-3.5 text-white" />}
                         </div>
+                      </div>
+
+                      {/* Emoji Reactions Bar Below Bubbles */}
+                      <div className={`flex items-center gap-1 mt-1 flex-wrap ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        {m.reactions?.map((r, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleToggleReaction(m.id, r.emoji)}
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold border transition flex items-center gap-1 cursor-pointer ${
+                              r.reacted
+                                ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-2xs'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span>{r.emoji}</span>
+                            <span className="text-[10px]">{r.count}</span>
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => handleToggleReaction(m.id, '❤️')}
+                          className="px-1.5 py-0.5 rounded-full text-[10px] text-slate-400 hover:text-slate-600 bg-white border border-slate-200/60 hover:bg-slate-50 transition cursor-pointer"
+                          title="Add reaction"
+                        >
+                          +❤️
+                        </button>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Attached Media / File Preview Bar */}
+            {attachedMedia && (
+              <div className="px-4 py-2 bg-slate-100/90 border-t border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  {attachedMedia.type === 'image' && (
+                    <img src={attachedMedia.url} alt="Preview" className="w-10 h-10 rounded-xl object-cover border border-slate-300" />
+                  )}
+                  {attachedMedia.type === 'video' && (
+                    <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-white">
+                      <Film className="w-5 h-5" />
+                    </div>
+                  )}
+                  {attachedMedia.type === 'file' && (
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                  )}
+                  <div className="truncate text-xs">
+                    <p className="font-bold text-slate-800 truncate">{attachedMedia.name || 'Attachment'}</p>
+                    <span className="text-[10px] text-slate-400">{attachedMedia.size || 'Ready to send'}</span>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setAttachedMedia(null)}
+                  className="p-1 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
-                {/* Muted Warning Banner */}
-                {isMuted && (
-                  <div className="p-2.5 bg-rose-50 rounded-2xl border border-rose-200 flex items-center gap-2 text-rose-800 text-xs font-bold">
-                    <VolumeX className="w-4 h-4 text-rose-600 flex-shrink-0" />
-                    <span>You are muted by the community owner and cannot send messages.</span>
-                  </div>
-                )}
-
-                {/* Chat Input Bar */}
-                <form onSubmit={handleSendMessage} className="flex items-center gap-2 pt-1 flex-shrink-0">
-                  <div className="flex-1 bg-white rounded-2xl border border-slate-200 px-3 py-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#5B9DFF]/30 transition shadow-2xs">
-                    <Smile className="w-4 h-4 text-slate-400 hover:text-slate-600 cursor-pointer" />
-                    <input
-                      type="text"
-                      disabled={isMuted}
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      placeholder={
-                        isMuted
-                          ? 'You are muted by community admin...'
-                          : !isJoined && !isOwner
-                          ? 'Join community to participate in chat...'
-                          : 'Message # general...'
-                      }
-                      className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium disabled:opacity-50"
-                    />
-                    <Paperclip className="w-4 h-4 text-slate-400 hover:text-slate-600 cursor-pointer" />
-                  </div>
+            {/* Live Voice Recording UI Bar */}
+            {isRecordingVoice && (
+              <div className="px-4 py-3 bg-amber-50 border-t border-amber-200 flex items-center justify-between animate-in fade-in">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
+                  <span className="text-xs font-extrabold text-amber-900">
+                    Recording Voice Note... 0:{recordingSeconds < 10 ? '0' : ''}{recordingSeconds}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
                   <button
-                    type="submit"
-                    disabled={isMuted || !inputText.trim()}
-                    className="w-10 h-10 rounded-2xl bg-[#5B9DFF] text-white flex items-center justify-center hover:bg-blue-600 transition shadow-md shadow-[#5B9DFF]/20 disabled:opacity-40 cursor-pointer flex-shrink-0"
+                    onClick={handleCancelVoiceRecord}
+                    className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 transition cursor-pointer"
                   >
-                    <Send className="w-4 h-4" />
+                    Cancel
                   </button>
-                </form>
-              </div>
-            )}
-
-            {/* TAB 2: About & Guidelines */}
-            {activeTab === 'info' && (
-              <div className="space-y-4 text-xs text-slate-700">
-                <div className="p-4 bg-white rounded-2xl border border-slate-200/80 space-y-2 shadow-2xs">
-                  <h4 className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px]">
-                    About this Community
-                  </h4>
-                  <p className="leading-relaxed font-medium text-slate-600">
-                    {community.description || 'Welcome to our official community hub! Connect with fellow members, share knowledge, and explore exciting topics.'}
-                  </p>
-                </div>
-
-                <div className="p-4 bg-white rounded-2xl border border-slate-200/80 space-y-2 shadow-2xs">
-                  <h4 className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Community Rules
-                  </h4>
-                  <ul className="space-y-1.5 text-[11px] text-slate-600 font-medium list-disc list-inside">
-                    <li>Be respectful and constructive with all members.</li>
-                    <li>No spamming, self-promotion, or off-topic advertising.</li>
-                    <li>Owner & admins reserve the right to mute, remove, or ban rule violators.</li>
-                  </ul>
-                </div>
-
-                <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-200/70 space-y-1">
-                  <h4 className="font-extrabold text-amber-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <Crown className="w-3.5 h-3.5 text-amber-600 fill-amber-500" /> Community Leadership
-                  </h4>
-                  <p className="text-[11px] text-amber-800 font-semibold">
-                    Created & Managed by <span className="font-bold">{community.adminName}</span>
-                  </p>
+                  <button
+                    onClick={handleSendVoiceRecord}
+                    className="px-3 py-1.5 rounded-xl bg-[#5B9DFF] text-white text-xs font-extrabold flex items-center gap-1 hover:bg-blue-600 transition shadow-xs cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send</span>
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* TAB 3: Members Preview */}
-            {activeTab === 'members' && (
-              <div className="space-y-2">
-                <div className="p-3 bg-white rounded-2xl border border-slate-200/80 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">
-                      Active Community Roster
-                    </span>
-                    <span className="text-[11px] font-bold text-slate-400">{community.members} Members</span>
-                  </div>
+            {/* Muted Warning Banner */}
+            {isMuted && (
+              <div className="mx-4 mb-2 p-3 bg-rose-50 rounded-2xl border border-rose-200 flex items-center gap-2 text-rose-800 text-xs font-bold shadow-xs">
+                <VolumeX className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                <span>You are muted by the community owner and cannot send messages.</span>
+              </div>
+            )}
 
-                  <div className="space-y-2 pt-1">
-                    {[
-                      { name: community.adminName, role: 'Owner', badge: '👑 Owner' },
-                      { name: 'Alex Rivera', role: 'Admin', badge: '🛡️ Admin' },
-                      { name: 'Jordan Smith', role: 'Moderator', badge: '⚡ Mod' },
-                      { name: 'Sam Wilson', role: 'Member', badge: 'Member' },
-                      { name: 'Taylor Swift', role: 'Member', badge: 'Member' },
-                    ].map((m, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-xs">
-                            {m.name.charAt(0)}
-                          </div>
-                          <span className="text-xs font-bold text-slate-800">{m.name}</span>
+            {/* 4. Bottom Input Bar: Floating Pill-Shaped Action Field */}
+            {!isRecordingVoice && (
+              <form
+                onSubmit={handleSendMessage}
+                className="bg-white border-t border-slate-200/80 px-3 sm:px-4 py-3 flex items-center gap-2 flex-shrink-0 z-30 shadow-lg"
+              >
+                {/* Media Action Icons on Left */}
+                <div className="flex items-center gap-1 text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center hover:text-[#5B9DFF] transition cursor-pointer"
+                    title="Camera Roll / Photos & Videos"
+                  >
+                    <ImageIcon className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center hover:text-[#5B9DFF] transition cursor-pointer"
+                    title="Take Photo"
+                  >
+                    <Camera className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center hover:text-[#5B9DFF] transition cursor-pointer"
+                    title="Attach Files"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStartVoiceRecord}
+                    className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center hover:text-[#5B9DFF] transition cursor-pointer"
+                    title="Record Voice Note"
+                  >
+                    <Mic className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Pill-shaped Input Container */}
+                <div className="flex-1 bg-slate-100/90 focus-within:bg-white rounded-full border border-slate-200 px-4 py-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#5B9DFF]/30 transition shadow-2xs">
+                  <input
+                    type="text"
+                    disabled={isMuted}
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    placeholder={
+                      isMuted
+                        ? 'Muted by community admin...'
+                        : !isJoined && !isOwner
+                        ? 'Join community to chat...'
+                        : 'Message #' + community.name + '...'
+                    }
+                    className="w-full bg-transparent text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none font-medium disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setInputText((prev) => prev + ' 😊')}
+                    className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                  >
+                    <Smile className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Circular Primary Send Button */}
+                <button
+                  type="submit"
+                  disabled={isMuted || (!inputText.trim() && !attachedMedia)}
+                  className="w-10 h-10 rounded-full bg-[#5B9DFF] text-white flex items-center justify-center hover:bg-blue-600 transition shadow-md shadow-[#5B9DFF]/30 disabled:opacity-40 cursor-pointer flex-shrink-0"
+                >
+                  <Send className="w-4.5 h-4.5 ml-0.5" />
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: ABOUT & GUIDELINES TAB */}
+        {activeTab === 'info' && (
+          <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-4 text-xs sm:text-sm text-slate-700 w-full">
+            <div className="p-5 bg-white rounded-3xl border border-slate-200/80 space-y-3 shadow-2xs">
+              <h4 className="font-extrabold text-slate-900 uppercase tracking-wider text-xs flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#5B9DFF]" /> About {community.name}
+              </h4>
+              <p className="leading-relaxed font-medium text-slate-600">
+                {community.description ||
+                  'Welcome to our official community channel! Connect with fellow members, collaborate on projects, and share insights.'}
+              </p>
+            </div>
+
+            <div className="p-5 bg-white rounded-3xl border border-slate-200/80 space-y-3 shadow-2xs">
+              <h4 className="font-extrabold text-slate-900 uppercase tracking-wider text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Guidelines & Expectations
+              </h4>
+              <ul className="space-y-2 text-xs text-slate-600 font-medium list-disc list-inside">
+                <li>Be respectful and constructive with all community members.</li>
+                <li>No spamming, self-promotion, or off-topic advertising.</li>
+                <li>Community owner and moderators retain moderation rights to enforce rules.</li>
+              </ul>
+            </div>
+
+            <div className="p-5 bg-[#5B9DFF]/10 rounded-3xl border border-[#5B9DFF]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                  <Share2 className="w-4 h-4 text-[#5B9DFF]" /> Share {community.name}
+                </h4>
+                <p className="text-xs text-slate-600 mt-1">
+                  Invite friends and colleagues to join this channel via direct link or QR code.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowShareModal(true)}
+                className="px-4 py-2 rounded-2xl bg-[#5B9DFF] text-white text-xs font-bold hover:bg-blue-600 transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer flex-shrink-0"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share Invite</span>
+              </button>
+            </div>
+
+            <div className="p-5 bg-amber-50/70 rounded-3xl border border-amber-200/80 space-y-2">
+              <h4 className="font-extrabold text-amber-900 uppercase tracking-wider text-xs flex items-center gap-2">
+                <Crown className="w-4 h-4 text-amber-600 fill-amber-500" /> Community Leadership
+              </h4>
+              <p className="text-xs text-amber-800 font-semibold">
+                Created & Headed by <span className="font-bold">{community.adminName}</span>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: MEMBERS ROSTER TAB (WITH FULL ADMIN CONTROLS) */}
+        {activeTab === 'members' && (
+          <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-3 w-full">
+            <div className="p-4 bg-white rounded-3xl border border-slate-200/80 space-y-3 shadow-2xs">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                  Community Members Roster
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-400">{rosterMembers.length} Members</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMemberModal(true)}
+                    className="px-2.5 py-1 rounded-xl bg-[#5B9DFF] text-white text-xs font-bold hover:bg-blue-600 transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Add Member</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                {rosterMembers.map((m) => {
+                  const isOwnerRow = m.role === 'Owner';
+
+                  return (
+                    <div key={m.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-2xs flex-shrink-0">
+                          {m.name.charAt(0)}
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          m.role === 'Owner' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-200 text-slate-700'
-                        }`}>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-800 truncate">{m.name}</span>
+                            {m.isMuted && (
+                              <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.2 rounded-md border border-rose-200">
+                                Muted
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 block">{m.role}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                            isOwnerRow
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-slate-200 text-slate-700'
+                          }`}
+                        >
                           {m.badge}
                         </span>
+
+                        {/* Admin Action Buttons for Non-Owner Members */}
+                        {!isOwnerRow && (isOwner || community.adminName === 'You') && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleToggleMuteMember(m.id)}
+                              className={`p-1.5 rounded-lg border text-xs transition cursor-pointer ${
+                                m.isMuted
+                                  ? 'bg-amber-100 text-amber-700 border-amber-300'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                              }`}
+                              title={m.isMuted ? 'Unmute Member' : 'Mute Member'}
+                            >
+                              {m.isMuted ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              onClick={() => handleRemoveMember(m.id)}
+                              className="p-1.5 rounded-lg border bg-white text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                              title="Remove Member"
+                            >
+                              <UserMinus className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleBlockMember(m.id)}
+                              className="p-1.5 rounded-lg border bg-white text-slate-600 border-slate-200 hover:bg-rose-100 hover:text-rose-700 transition cursor-pointer"
+                              title="Block Member"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Full-Screen Image Preview Modal */}
+      {previewImage && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+          <button
+            onClick={() => setPreviewImage(null)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/20 text-white hover:bg-white/40 cursor-pointer"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img src={previewImage} alt="Expanded preview" className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl" />
+        </div>
+      )}
+
+      {/* Add Member Modal Dialog */}
+      <AnimatePresence>
+        {showAddMemberModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-white rounded-3xl p-5 max-w-md w-full shadow-2xl border border-slate-100 space-y-4"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-blue-50 text-[#5B9DFF] flex items-center justify-center font-bold">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">Add Member to Community</h3>
+                    <p className="text-[11px] text-slate-400">Invite or add people to #{community.name}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddMemberModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form 1: Add by Name/Username */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAddMember(newMemberName, newMemberRole);
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-1">
+                    Member Name or Handle
+                  </label>
+                  <input
+                    type="text"
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    placeholder="e.g. Alex Morgan or @alex_m"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/30 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-1">
+                    Assign Role
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { role: 'Member', label: 'Member', icon: Users },
+                      { role: 'Moderator', label: 'Moderator ⚡', icon: Zap },
+                      { role: 'Admin', label: 'Admin 🛡️', icon: Shield },
+                    ].map((r) => (
+                      <button
+                        key={r.role}
+                        type="button"
+                        onClick={() => setNewMemberRole(r.role as any)}
+                        className={`py-2 px-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
+                          newMemberRole === r.role
+                            ? 'bg-[#5B9DFF] text-white border-[#5B9DFF] shadow-xs'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span>{r.label}</span>
+                      </button>
                     ))}
                   </div>
                 </div>
+
+                <button
+                  type="submit"
+                  disabled={!newMemberName.trim()}
+                  className="w-full py-2.5 rounded-2xl bg-[#5B9DFF] text-white text-xs font-bold hover:bg-blue-600 transition shadow-md disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Add Member Directly</span>
+                </button>
+              </form>
+
+              {/* Suggested Contacts List */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                    Suggested Contacts
+                  </span>
+                  <div className="relative">
+                    <Search className="w-3 h-3 text-slate-400 absolute left-2 top-2" />
+                    <input
+                      type="text"
+                      value={contactsSearchQuery}
+                      onChange={(e) => setContactsSearchQuery(e.target.value)}
+                      placeholder="Filter..."
+                      className="bg-slate-100 pl-6 pr-2 py-1 text-[10px] rounded-lg w-28 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 max-h-[160px] overflow-y-auto no-scrollbar">
+                  {SUGGESTED_CONTACTS
+                    .filter(
+                      (c) =>
+                        c.name.toLowerCase().includes(contactsSearchQuery.toLowerCase()) ||
+                        c.username.toLowerCase().includes(contactsSearchQuery.toLowerCase())
+                    )
+                    .map((contact) => {
+                      const isAlreadyAdded = rosterMembers.some(
+                        (m) => m.name.toLowerCase() === contact.name.toLowerCase()
+                      );
+
+                      return (
+                        <div
+                          key={contact.id}
+                          className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100 hover:bg-slate-100/80 transition"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className={`w-8 h-8 rounded-full bg-gradient-to-tr ${contact.avatarBg} text-white font-bold flex items-center justify-center text-xs shadow-2xs flex-shrink-0`}
+                            >
+                              {contact.name.charAt(0)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-800 truncate">{contact.name}</p>
+                              <span className="text-[10px] text-slate-400 block">{contact.username}</span>
+                            </div>
+                          </div>
+
+                          {isAlreadyAdded ? (
+                            <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-[10px] font-bold border border-emerald-200 flex items-center gap-1">
+                              <UserCheck className="w-3 h-3" /> Member
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleAddMember(contact.name, 'Member')}
+                              className="px-2.5 py-1 rounded-lg bg-white border border-[#5B9DFF]/40 text-[#5B9DFF] text-[11px] font-bold hover:bg-[#5B9DFF] hover:text-white transition cursor-pointer shadow-2xs flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" /> Add
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
-            )}
+            </motion.div>
           </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+      {/* Share Community Modal */}
+      <ShareCommunityModal
+        community={community}
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        onShowToast={onShowToast}
+      />
+    </motion.div>
   );
 };

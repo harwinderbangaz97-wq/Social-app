@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, Globe, Users, TrendingUp, Plus, Check } from 'lucide-react';
+import { Search, Globe, Users, TrendingUp, Plus, Check, Share2 } from 'lucide-react';
 import { CreateCommunityModal } from './CreateCommunityModal';
+import { ShareCommunityModal } from './ShareCommunityModal';
 
 export const CommunityDiscoveryView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [joinedCommunities, setJoinedCommunities] = useState<string[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [shareCommunityTarget, setShareCommunityTarget] = useState<any | null>(null);
 
   const trendingCommunities = [
     { id: '1', name: 'Tech Enthusiasts', description: 'Discuss the latest in web dev, AI, and more.', members: '12.5k', icon: Globe, color: 'text-indigo-500', bg: 'bg-indigo-100', border: 'border-indigo-200/50' },
@@ -77,22 +79,32 @@ export const CommunityDiscoveryView: React.FC = () => {
                 </div>
                 <h3 className="text-base font-bold text-slate-800 mb-1">{community.name}</h3>
                 <p className="text-xs text-slate-500 line-clamp-2 mb-4 flex-1">{community.description}</p>
-                <button
-                  onClick={() => handleToggleJoin(community.id)}
-                  className={`w-full py-2 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 ${
-                    joinedCommunities.includes(community.id)
-                      ? 'bg-slate-100 text-slate-600 border border-slate-200'
-                      : 'bg-[#5B9DFF] text-white shadow-md shadow-[#5B9DFF]/20 hover:bg-blue-600'
-                  }`}
-                >
-                  {joinedCommunities.includes(community.id) ? (
-                    <>
-                      <Check className="w-4 h-4" /> Joined
-                    </>
-                  ) : (
-                    'Join Community'
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShareCommunityTarget(community)}
+                    className="p-2 rounded-xl bg-blue-50 text-[#5B9DFF] border border-blue-200/80 hover:bg-blue-100 transition flex items-center justify-center cursor-pointer"
+                    title="Share Community"
+                  >
+                    <Share2 className="w-4 h-4 text-[#5B9DFF]" />
+                  </button>
+                  <button
+                    onClick={() => handleToggleJoin(community.id)}
+                    className={`flex-1 py-2 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 ${
+                      joinedCommunities.includes(community.id)
+                        ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                        : 'bg-[#5B9DFF] text-white shadow-md shadow-[#5B9DFF]/20 hover:bg-blue-600'
+                    }`}
+                  >
+                    {joinedCommunities.includes(community.id) ? (
+                      <>
+                        <Check className="w-4 h-4" /> Joined
+                      </>
+                    ) : (
+                      'Join Community'
+                    )}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -114,6 +126,14 @@ export const CommunityDiscoveryView: React.FC = () => {
                   <p className="text-[11px] text-slate-500 truncate mt-0.5">{community.members} members</p>
                 </div>
                 <button
+                  type="button"
+                  onClick={() => setShareCommunityTarget(community)}
+                  className="p-1.5 rounded-xl bg-blue-50 text-[#5B9DFF] border border-blue-200/80 hover:bg-blue-100 transition flex items-center justify-center cursor-pointer flex-shrink-0"
+                  title="Share Community"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-[#5B9DFF]" />
+                </button>
+                <button
                   onClick={() => handleToggleJoin(community.id)}
                   className={`px-4 py-1.5 rounded-full text-xs font-bold transition flex-shrink-0 ${
                     joinedCommunities.includes(community.id)
@@ -133,6 +153,13 @@ export const CommunityDiscoveryView: React.FC = () => {
       <CreateCommunityModal 
         isOpen={isCreateModalOpen} 
         onClose={() => setIsCreateModalOpen(false)} 
+      />
+
+      {/* Share Community Modal */}
+      <ShareCommunityModal
+        community={shareCommunityTarget}
+        isOpen={shareCommunityTarget !== null}
+        onClose={() => setShareCommunityTarget(null)}
       />
     </motion.div>
   );
