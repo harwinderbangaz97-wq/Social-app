@@ -44,8 +44,11 @@ import {
   UserPlus,
   Plus,
   UserCheck,
-  Zap
+  Zap,
+  Forward,
 } from 'lucide-react';
+import { MOCK_USERS } from '../data/mockData';
+import { User, VoiceNoteData } from '../types';
 
 export interface CommunityMessage {
   id: string;
@@ -99,6 +102,7 @@ interface CommunityChannelModalProps {
   onJoinToggle: () => void;
   onOpenOwnerAdmin: () => void;
   onShowToast?: (msg: string, type?: 'success' | 'info' | 'warning') => void;
+  onForwardMessage?: (receiverId: string, text?: string, imageUrl?: string, voiceNote?: VoiceNoteData) => void;
 }
 
 export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
@@ -111,12 +115,15 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
   onJoinToggle,
   onOpenOwnerAdmin,
   onShowToast,
+  onForwardMessage,
 }) => {
   const [activeTab, setActiveTab] = useState<'chat' | 'info' | 'members'>('chat');
   const [inputText, setInputText] = useState('');
   const [isNotifMuted, setIsNotifMuted] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [forwardTargetMessage, setForwardTargetMessage] = useState<CommunityMessage | null>(null);
+  const [forwardSearchQuery, setForwardSearchQuery] = useState('');
   
   // Media & File Attachments State
   const [attachedMedia, setAttachedMedia] = useState<{
@@ -136,6 +143,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
   // Voice Note Recording State
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [liveWaveform, setLiveWaveform] = useState<number[]>([30, 60, 45, 80, 50, 90, 40, 70, 55, 85, 65, 40]);
   const recordingTimerRef = useRef<any>(null);
 
   // Community Roster State
@@ -149,6 +157,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
 
   // Add Member State
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showCommunityEmojiPicker, setShowCommunityEmojiPicker] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState<'Member' | 'Admin' | 'Moderator'>('Member');
@@ -242,18 +251,25 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
     },
   ]);
 
-  // Voice recording timer effect
+  // Voice recording timer effect & live waveform
   useEffect(() => {
+    let waveformInterval: any;
     if (isRecordingVoice) {
       setRecordingSeconds(0);
       recordingTimerRef.current = setInterval(() => {
         setRecordingSeconds((prev) => prev + 1);
       }, 1000);
+      waveformInterval = setInterval(() => {
+        setLiveWaveform(
+          Array.from({ length: 14 }, () => Math.floor(Math.random() * 75) + 25)
+        );
+      }, 120);
     } else {
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     }
     return () => {
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (waveformInterval) clearInterval(waveformInterval);
     };
   }, [isRecordingVoice]);
 
@@ -831,16 +847,30 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                             : 'bg-white text-slate-800 rounded-bl-xs border border-slate-200/80'
                         }`}
                       >
-                        {/* Admin Delete Action Button on Bubble Hover */}
-                        {canAdminDelete && (
+                        {/* Action Buttons on Bubble Hover */}
+                        <div className={`absolute -top-2.5 ${isMe ? '-left-2' : '-right-2'} opacity-0 group-hover/bubble:opacity-100 transition-opacity flex items-center gap-1 z-10`}>
                           <button
-                            onClick={() => handleDeleteMessage(m.id)}
-                            className={`absolute -top-2 ${isMe ? '-left-2' : '-right-2'} opacity-0 group-hover/bubble:opacity-100 transition p-1 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-full border border-slate-200 shadow-sm cursor-pointer`}
-                            title="Admin Delete Message"
+                            type="button"
+                            onClick={() => {
+                              setForwardTargetMessage(m);
+                              setForwardSearchQuery('');
+                            }}
+                            className="p-1 bg-white hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-full border border-slate-200 shadow-sm cursor-pointer"
+                            title="Forward Message"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Forward className="w-3 h-3" />
                           </button>
-                        )}
+                          {canAdminDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMessage(m.id)}
+                              className="p-1 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-full border border-slate-200 shadow-sm cursor-pointer"
+                              title="Admin Delete Message"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
 
                         {/* Text Content */}
                         {m.text && <p className="whitespace-pre-wrap">{m.text}</p>}
@@ -962,149 +992,232 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
               })}
             </div>
 
-            {/* Attached Media / File Preview Bar */}
-            {attachedMedia && (
-              <div className="px-4 py-2 bg-slate-100/90 border-t border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  {attachedMedia.type === 'image' && (
-                    <img src={attachedMedia.url} alt="Preview" className="w-10 h-10 rounded-xl object-cover border border-slate-300" />
-                  )}
-                  {attachedMedia.type === 'video' && (
-                    <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-white">
-                      <Film className="w-5 h-5" />
+            {/* Bottom Chat Input Bar with Neumorphic Styling (Identical to Personal Chat) */}
+            <div className="p-3 bg-white/80 backdrop-blur-md border-t border-slate-200/80">
+              {/* Attached Media / File Preview Staging */}
+              <AnimatePresence>
+                {attachedMedia && !isRecordingVoice && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 6 }}
+                    className="mb-2 neu-flat rounded-[18px] p-2 flex items-center justify-between gap-3 bg-white border border-blue-200/80"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="relative w-12 h-12 rounded-[12px] overflow-hidden neu-inset flex-shrink-0 flex items-center justify-center bg-slate-100">
+                        {attachedMedia.type === 'image' && (
+                          <img
+                            src={attachedMedia.url}
+                            alt="Attached preview"
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                        {attachedMedia.type === 'video' && (
+                          <div className="w-full h-full bg-slate-800 flex items-center justify-center text-white">
+                            <Film className="w-5 h-5" />
+                          </div>
+                        )}
+                        {attachedMedia.type === 'file' && (
+                          <div className="w-full h-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-slate-800 block truncate">
+                          {attachedMedia.name || (attachedMedia.type === 'image' ? 'Photo attached' : 'File attached')}
+                        </span>
+                        <span className="text-[10px] text-[#5B9DFF] font-semibold">
+                          {attachedMedia.size || 'Ready to send'}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                  {attachedMedia.type === 'file' && (
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
-                      <FileText className="w-5 h-5" />
-                    </div>
-                  )}
-                  <div className="truncate text-xs">
-                    <p className="font-bold text-slate-800 truncate">{attachedMedia.name || 'Attachment'}</p>
-                    <span className="text-[10px] text-slate-400">{attachedMedia.size || 'Ready to send'}</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setAttachedMedia(null)}
-                  className="p-1 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
 
-            {/* Live Voice Recording UI Bar */}
-            {isRecordingVoice && (
-              <div className="px-4 py-3 bg-amber-50 border-t border-amber-200 flex items-center justify-between animate-in fade-in">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
-                  <span className="text-xs font-extrabold text-amber-900">
-                    Recording Voice Note... 0:{recordingSeconds < 10 ? '0' : ''}{recordingSeconds}
-                  </span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachedMedia(null)}
+                      className="w-7 h-7 rounded-full neu-raised flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer"
+                      title="Remove attachment"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Muted Warning Banner */}
+              {isMuted && (
+                <div className="mb-2 p-2.5 bg-rose-50 rounded-2xl border border-rose-200 flex items-center gap-2 text-rose-800 text-xs font-bold shadow-xs">
+                  <VolumeX className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <span>You are muted by the community owner and cannot send messages.</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
+              )}
+
+              {isRecordingVoice ? (
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="neu-flat rounded-full p-2 flex items-center justify-between gap-3 border border-blue-200/80 shadow-md bg-white"
+                >
+                  {/* Cancel Button */}
+                  <motion.button
+                    whileTap={{ scale: 0.88 }}
                     onClick={handleCancelVoiceRecord}
-                    className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 transition cursor-pointer"
+                    className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-rose-500 hover:bg-rose-50 transition cursor-pointer"
+                    title="Cancel recording"
                   >
-                    Cancel
-                  </button>
-                  <button
+                    <Trash2 className="w-4 h-4" />
+                  </motion.button>
+
+                  {/* Live Recording Indicator */}
+                  <div className="flex-1 flex items-center gap-2.5 px-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
+                      <span className="text-xs font-bold text-slate-800 font-mono">
+                        0:{recordingSeconds < 10 ? '0' : ''}
+                        {recordingSeconds}
+                      </span>
+                    </div>
+
+                    <div className="flex-1 flex items-center gap-1 h-6 overflow-hidden">
+                      {liveWaveform.map((val, idx) => (
+                        <motion.div
+                          key={idx}
+                          animate={{ height: `${val}%` }}
+                          transition={{ duration: 0.1 }}
+                          className="flex-1 bg-[#5B9DFF] rounded-full min-w-[3px] max-w-[5px]"
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Send Voice Note Button */}
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
                     onClick={handleSendVoiceRecord}
-                    className="px-3 py-1.5 rounded-xl bg-[#5B9DFF] text-white text-xs font-extrabold flex items-center gap-1 hover:bg-blue-600 transition shadow-xs cursor-pointer"
+                    className="w-10 h-10 rounded-full neu-active-blue text-white shadow-md flex items-center justify-center flex-shrink-0 cursor-pointer"
+                    title="Send Voice Message"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Send</span>
-                  </button>
+                    <Send className="w-4 h-4 -translate-x-0.5 translate-y-0.5" />
+                  </motion.button>
+                </motion.div>
+              ) : (
+                <div className="relative">
+                  {/* Quick Emoji Popover */}
+                  <AnimatePresence>
+                    {showCommunityEmojiPicker && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute bottom-full mb-2 left-0 z-30 bg-white neu-flat rounded-2xl p-2 border border-slate-200/80 shadow-lg flex items-center gap-1.5 flex-wrap max-w-xs"
+                      >
+                        {['😊', '❤️', '🔥', '😂', '👍', '🎉', '✨', '🙌', '💯', '🚀', '😍', '👀', '💡', '👏', '🥳'].map((em) => (
+                          <button
+                            key={em}
+                            type="button"
+                            onClick={() => {
+                              setInputText((prev) => prev + em);
+                              setShowCommunityEmojiPicker(false);
+                            }}
+                            className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-base transition cursor-pointer"
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <form
+                    onSubmit={handleSendMessage}
+                    className="neu-flat rounded-full p-1.5 flex items-center gap-1.5 bg-white border border-slate-200/80 shadow-sm"
+                  >
+                    {/* Gallery / Attachment Popover Button */}
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className={`w-9 h-9 rounded-full neu-raised flex items-center justify-center transition cursor-pointer shrink-0 ${
+                        attachedMedia
+                          ? 'text-[#5B9DFF] ring-2 ring-[#5B9DFF]/40'
+                          : 'text-slate-500 hover:text-[#5B9DFF]'
+                      }`}
+                      title="Attach Media"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                    </button>
+
+                    {/* Emoji Picker Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowCommunityEmojiPicker(!showCommunityEmojiPicker)}
+                      className={`w-9 h-9 rounded-full neu-raised flex items-center justify-center transition cursor-pointer shrink-0 ${
+                        showCommunityEmojiPicker
+                          ? 'text-[#5B9DFF] ring-2 ring-[#5B9DFF]/40'
+                          : 'text-slate-500 hover:text-[#5B9DFF]'
+                      }`}
+                      title="Emoji"
+                    >
+                      <Smile className="w-4 h-4" />
+                    </button>
+
+                    {/* Rounded Pill-Shaped Input Field with Inline Microphone Icon on Right End */}
+                    <div className="flex-1 neu-inset rounded-full px-3.5 py-1.5 flex items-center gap-2 bg-slate-50 border border-slate-200/60 focus-within:bg-white focus-within:border-[#5B9DFF]/60 transition min-w-0">
+                      <input
+                        type="text"
+                        disabled={isMuted}
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        placeholder={
+                          isMuted
+                            ? 'Muted by community admin...'
+                            : 'Send chat'
+                        }
+                        className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none min-w-0 font-medium disabled:opacity-50"
+                      />
+                      {/* Inline Microphone Button on the Right End */}
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.9 }}
+                        onClick={handleStartVoiceRecord}
+                        disabled={isMuted}
+                        className="text-slate-400 hover:text-[#5B9DFF] p-1 rounded-full transition cursor-pointer shrink-0 disabled:opacity-30"
+                        title="Hold or tap to record voice message"
+                      >
+                        <Mic className="w-4 h-4" />
+                      </motion.button>
+                    </div>
+
+                    {/* Circular Camera Button on Right Side */}
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => cameraInputRef.current?.click()}
+                      disabled={isMuted}
+                      className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-slate-500 hover:text-[#5B9DFF] transition cursor-pointer shrink-0 disabled:opacity-30"
+                      title="Take Photo with Camera"
+                    >
+                      <Camera className="w-4 h-4" />
+                    </motion.button>
+
+                    {/* Send Button */}
+                    <motion.button
+                      type="submit"
+                      whileTap={{ scale: 0.9 }}
+                      disabled={isMuted || (!inputText.trim() && !attachedMedia)}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                        inputText.trim() || attachedMedia
+                          ? 'neu-active-blue text-white shadow-md'
+                          : 'neu-inset text-slate-300 cursor-not-allowed opacity-50'
+                      }`}
+                      title="Send"
+                    >
+                      <Send className="w-4 h-4 -translate-x-0.5 translate-y-0.5" />
+                    </motion.button>
+                  </form>
                 </div>
-              </div>
-            )}
-
-            {/* Muted Warning Banner */}
-            {isMuted && (
-              <div className="mx-4 mb-2 p-3 bg-rose-50 rounded-2xl border border-rose-200 flex items-center gap-2 text-rose-800 text-xs font-bold shadow-xs">
-                <VolumeX className="w-4 h-4 text-rose-600 flex-shrink-0" />
-                <span>You are muted by the community owner and cannot send messages.</span>
-              </div>
-            )}
-
-            {/* 4. Bottom Input Bar: Floating Pill-Shaped Action Field */}
-            {!isRecordingVoice && (
-              <form
-                onSubmit={handleSendMessage}
-                className="bg-white border-t border-slate-200/80 px-3 sm:px-4 py-3 flex items-center gap-2 flex-shrink-0 z-30 shadow-lg"
-              >
-                {/* Media Action Icons on Left */}
-                <div className="flex items-center gap-1 text-slate-400">
-                  <button
-                    type="button"
-                    onClick={() => photoInputRef.current?.click()}
-                    className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center hover:text-[#5B9DFF] transition cursor-pointer"
-                    title="Camera Roll / Photos & Videos"
-                  >
-                    <ImageIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => cameraInputRef.current?.click()}
-                    className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center hover:text-[#5B9DFF] transition cursor-pointer"
-                    title="Take Photo"
-                  >
-                    <Camera className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center hover:text-[#5B9DFF] transition cursor-pointer"
-                    title="Attach Files"
-                  >
-                    <Paperclip className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleStartVoiceRecord}
-                    className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center hover:text-[#5B9DFF] transition cursor-pointer"
-                    title="Record Voice Note"
-                  >
-                    <Mic className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Pill-shaped Input Container */}
-                <div className="flex-1 bg-slate-100/90 focus-within:bg-white rounded-full border border-slate-200 px-4 py-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#5B9DFF]/30 transition shadow-2xs">
-                  <input
-                    type="text"
-                    disabled={isMuted}
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder={
-                      isMuted
-                        ? 'Muted by community admin...'
-                        : !isJoined && !isOwner
-                        ? 'Join community to chat...'
-                        : 'Message #' + community.name + '...'
-                    }
-                    className="w-full bg-transparent text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none font-medium disabled:opacity-50"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setInputText((prev) => prev + ' 😊')}
-                    className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
-                  >
-                    <Smile className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Circular Primary Send Button */}
-                <button
-                  type="submit"
-                  disabled={isMuted || (!inputText.trim() && !attachedMedia)}
-                  className="w-10 h-10 rounded-full bg-[#5B9DFF] text-white flex items-center justify-center hover:bg-blue-600 transition shadow-md shadow-[#5B9DFF]/30 disabled:opacity-40 cursor-pointer flex-shrink-0"
-                >
-                  <Send className="w-4.5 h-4.5 ml-0.5" />
-                </button>
-              </form>
-            )}
+              )}
+            </div>
           </div>
         )}
 
@@ -1433,6 +1546,128 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
         onClose={() => setShowShareModal(false)}
         onShowToast={onShowToast}
       />
+
+      {/* Forward Community Message Modal */}
+      <AnimatePresence>
+        {forwardTargetMessage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setForwardTargetMessage(null)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-sm rounded-[24px] bg-white p-5 shadow-2xl border border-slate-100 z-10 flex flex-col max-h-[85vh]"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-blue-50 text-[#5B9DFF] flex items-center justify-center">
+                    <Forward className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-800">Forward Message</h3>
+                    <p className="text-[10px] text-slate-400">Share this community message with a contact</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setForwardTargetMessage(null)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Message Snippet Preview */}
+              <div className="my-3 p-2.5 rounded-[16px] bg-slate-50 border border-slate-200/70 text-xs text-slate-600">
+                <p className="text-[10px] font-bold text-[#5B9DFF] mb-0.5">
+                  {forwardTargetMessage.senderName} ({community.name}):
+                </p>
+                <p className="line-clamp-2 italic text-slate-700">
+                  {forwardTargetMessage.text || (forwardTargetMessage.imageUrl ? '📷 Photo Attachment' : forwardTargetMessage.audioDuration ? '🎤 Voice Note' : '📎 Media')}
+                </p>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={forwardSearchQuery}
+                  onChange={(e) => setForwardSearchQuery(e.target.value)}
+                  placeholder="Search contacts..."
+                  className="w-full pl-9 pr-8 py-2 rounded-[14px] bg-slate-100/90 border border-transparent focus:border-blue-400 focus:bg-white text-xs outline-hidden transition text-slate-800"
+                />
+                {forwardSearchQuery && (
+                  <button
+                    onClick={() => setForwardSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Contact List */}
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[160px] max-h-[260px] no-scrollbar">
+                {MOCK_USERS.filter((u) => {
+                  if (!forwardSearchQuery.trim()) return true;
+                  const q = forwardSearchQuery.toLowerCase();
+                  return u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q);
+                }).map((contact) => (
+                  <button
+                    key={contact.id}
+                    onClick={() => {
+                      if (onForwardMessage) {
+                        onForwardMessage(
+                          contact.id,
+                          forwardTargetMessage.text,
+                          forwardTargetMessage.imageUrl
+                        );
+                      }
+                      if (onShowToast) {
+                        onShowToast(`Message forwarded to ${contact.name} ✈️`, 'success');
+                      }
+                      setForwardTargetMessage(null);
+                      setForwardSearchQuery('');
+                    }}
+                    className="w-full flex items-center justify-between p-2.5 rounded-[16px] hover:bg-blue-50/60 active:bg-blue-100/70 transition group cursor-pointer text-left"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative w-10 h-10 rounded-full flex-shrink-0">
+                        <img
+                          src={contact.avatar}
+                          alt={contact.name}
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                        {contact.isOnline && (
+                          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 truncate">
+                          {contact.name}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          @{contact.username}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-full bg-slate-100 group-hover:bg-[#5B9DFF] group-hover:text-white text-slate-600 text-[11px] font-semibold flex items-center gap-1 transition flex-shrink-0 ml-2 shadow-2xs">
+                      <span>Send</span>
+                      <Forward className="w-3 h-3" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

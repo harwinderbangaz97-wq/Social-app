@@ -121,6 +121,7 @@ const MessageBubbleItem: React.FC<{
   currentUserId: string;
   onDeleteMessage?: (messageId: string) => void;
   onOpenContextMenu: (msg: Message) => void;
+  onForward?: (msg: Message) => void;
   onImageClick: (url: string) => void;
   onToggleReaction?: (messageId: string, emoji: string) => void;
 }> = ({
@@ -129,6 +130,7 @@ const MessageBubbleItem: React.FC<{
   currentUserId,
   onDeleteMessage,
   onOpenContextMenu,
+  onForward,
   onImageClick,
   onToggleReaction,
 }) => {
@@ -367,6 +369,20 @@ const MessageBubbleItem: React.FC<{
           </span>
         )}
 
+        {/* Quick Forward Button */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onForward) onForward(msg);
+            else onOpenContextMenu(msg);
+          }}
+          className="opacity-60 hover:opacity-100 p-0.5 text-slate-400 hover:text-blue-600 transition cursor-pointer"
+          title="Forward message"
+        >
+          <Forward className="w-3 h-3" />
+        </button>
+
         {/* Quick React & Context options trigger on hover/tap */}
         <button
           type="button"
@@ -374,8 +390,8 @@ const MessageBubbleItem: React.FC<{
             e.stopPropagation();
             onOpenContextMenu(msg);
           }}
-          className="opacity-60 hover:opacity-100 p-0.5 text-slate-400 hover:text-slate-700 transition"
-          title="React or more options (long-press)"
+          className="opacity-60 hover:opacity-100 p-0.5 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+          title="More options (long-press or right-click)"
         >
           <MoreVertical className="w-3 h-3" />
         </button>
@@ -506,6 +522,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [joinRequestModalCommunity, setJoinRequestModalCommunity] = useState<any | null>(null);
   const [selectedChannelCommunity, setSelectedChannelCommunity] = useState<any | null>(null);
   const [shareCommunityTarget, setShareCommunityTarget] = useState<any | null>(null);
+  const [showInputEmojiPicker, setShowInputEmojiPicker] = useState(false);
   const [joinRequestNote, setJoinRequestNote] = useState('');
   const [localToast, setLocalToast] = useState<{ id: string; message: string; type?: 'success' | 'info' | 'warning' } | null>(null);
 
@@ -1096,7 +1113,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   // Forward message to selected contact
-  const handleForwardMessage = (recipientUser: User) => {
+  const handleForwardMessage = (recipientUser: User | { id: string; name: string; username?: string; avatar: string }) => {
     if (!forwardTargetMessage) return;
 
     // Determine sender attribution name
@@ -1105,6 +1122,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
       originSenderName = currentUser.name;
     } else if (activeThread && forwardTargetMessage.senderId === (activeThread.isGroup ? activeThread.id : activeThread.participant?.id || '')) {
       originSenderName = (activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '');
+    } else if (forwardTargetMessage.senderName) {
+      originSenderName = forwardTargetMessage.senderName;
     } else {
       const foundSender = MOCK_USERS.find((u) => u.id === forwardTargetMessage.senderId);
       if (foundSender) originSenderName = foundSender.name;
@@ -1279,6 +1298,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         setShowExtendedReactions(false);
                         setContextMessage(targetMsg);
                       }}
+                      onForward={(targetMsg) => {
+                        setForwardTargetMessage(targetMsg);
+                        setForwardSearchQuery('');
+                      }}
                       onImageClick={(url) => setLightboxImage(url)}
                       onToggleReaction={(messageId, emoji) => {
                         onToggleReaction?.(activeThread.id, messageId, emoji);
@@ -1446,69 +1469,113 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </motion.button>
               </motion.div>
             ) : (
-              <form
-                onSubmit={handleSend}
-                className="neu-flat rounded-full p-1.5 flex items-center gap-1.5 bg-white border border-slate-200/80 shadow-sm"
-              >
-                {/* Gallery / Attachment Popover Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowImagePicker(!showImagePicker)}
-                  className={`w-9 h-9 rounded-full neu-raised flex items-center justify-center transition cursor-pointer shrink-0 ${
-                    showImagePicker || attachedImage
-                      ? 'text-[#5B9DFF] ring-2 ring-[#5B9DFF]/40'
-                      : 'text-slate-500 hover:text-[#5B9DFF]'
-                  }`}
-                  title="Attach Media"
-                >
-                  <ImageIcon className="w-4 h-4" />
-                </button>
+              <div className="relative">
+                {/* Quick Emoji Popover */}
+                <AnimatePresence>
+                  {showInputEmojiPicker && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute bottom-full mb-2 left-0 z-30 bg-white neu-flat rounded-2xl p-2 border border-slate-200/80 shadow-lg flex items-center gap-1.5 flex-wrap max-w-xs"
+                    >
+                      {['😊', '❤️', '🔥', '😂', '👍', '🎉', '✨', '🙌', '💯', '🚀', '😍', '👀', '💡', '👏', '🥳'].map((em) => (
+                        <button
+                          key={em}
+                          type="button"
+                          onClick={() => {
+                            setInputText((prev) => prev + em);
+                            setShowInputEmojiPicker(false);
+                          }}
+                          className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-base transition cursor-pointer"
+                        >
+                          {em}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-                {/* Direct Camera Button */}
-                <button
-                  type="button"
-                  onClick={handleCaptureAttachmentCamera}
-                  className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-slate-500 hover:text-[#5B9DFF] transition cursor-pointer shrink-0"
-                  title="Take Photo with Camera"
+                <form
+                  onSubmit={handleSend}
+                  className="neu-flat rounded-full p-1.5 flex items-center gap-1.5 bg-white border border-slate-200/80 shadow-sm"
                 >
-                  <Camera className="w-4 h-4" />
-                </button>
+                  {/* Gallery / Attachment Popover Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowImagePicker(!showImagePicker)}
+                    className={`w-9 h-9 rounded-full neu-raised flex items-center justify-center transition cursor-pointer shrink-0 ${
+                      showImagePicker || attachedImage
+                        ? 'text-[#5B9DFF] ring-2 ring-[#5B9DFF]/40'
+                        : 'text-slate-500 hover:text-[#5B9DFF]'
+                    }`}
+                    title="Attach Media"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                  </button>
 
-                {/* Voice Message Trigger Button */}
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.9 }}
-                  onClick={handleStartRecording}
-                  className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-slate-600 hover:text-[#5B9DFF] transition cursor-pointer shrink-0"
-                  title="Hold or tap to record voice message"
-                >
-                  <Mic className="w-4 h-4" />
-                </motion.button>
+                  {/* Emoji Picker Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowInputEmojiPicker(!showInputEmojiPicker)}
+                    className={`w-9 h-9 rounded-full neu-raised flex items-center justify-center transition cursor-pointer shrink-0 ${
+                      showInputEmojiPicker
+                        ? 'text-[#5B9DFF] ring-2 ring-[#5B9DFF]/40'
+                        : 'text-slate-500 hover:text-[#5B9DFF]'
+                    }`}
+                    title="Emoji"
+                  >
+                    <Smile className="w-4 h-4" />
+                  </button>
 
-                {/* Input Text Box */}
-                <input
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder={`Message ${(activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '').split(' ')[0]}...`}
-                  className="flex-1 bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none px-2 min-w-0"
-                />
+                  {/* Rounded Pill-Shaped Input Field with Inline Microphone Icon on Right End */}
+                  <div className="flex-1 neu-inset rounded-full px-3.5 py-1.5 flex items-center gap-2 bg-slate-50 border border-slate-200/60 focus-within:bg-white focus-within:border-[#5B9DFF]/60 transition min-w-0">
+                    <input
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="Send chat"
+                      className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none min-w-0 font-medium"
+                    />
+                    {/* Inline Microphone Button on the Right End */}
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.9 }}
+                      onClick={handleStartRecording}
+                      className="text-slate-400 hover:text-[#5B9DFF] p-1 rounded-full transition cursor-pointer shrink-0"
+                      title="Hold or tap to record voice message"
+                    >
+                      <Mic className="w-4 h-4" />
+                    </motion.button>
+                  </div>
 
-                {/* Send Button */}
-                <motion.button
-                  type="submit"
-                  whileTap={{ scale: 0.9 }}
-                  disabled={!inputText.trim() && !attachedImage}
-                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
-                    inputText.trim() || attachedImage
-                      ? 'neu-active-blue text-white shadow-md'
-                      : 'neu-inset text-slate-300 cursor-not-allowed'
-                  }`}
-                  title="Send"
-                >
-                  <Send className="w-4 h-4 -translate-x-0.5 translate-y-0.5" />
-                </motion.button>
-              </form>
+                  {/* Circular Camera Button on Right Side */}
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.9 }}
+                    onClick={handleCaptureAttachmentCamera}
+                    className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-slate-500 hover:text-[#5B9DFF] transition cursor-pointer shrink-0"
+                    title="Take Photo with Camera"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </motion.button>
+
+                  {/* Send Button */}
+                  <motion.button
+                    type="submit"
+                    whileTap={{ scale: 0.9 }}
+                    disabled={!inputText.trim() && !attachedImage}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                      inputText.trim() || attachedImage
+                        ? 'neu-active-blue text-white shadow-md'
+                        : 'neu-inset text-slate-300 cursor-not-allowed opacity-50'
+                    }`}
+                    title="Send"
+                  >
+                    <Send className="w-4 h-4 -translate-x-0.5 translate-y-0.5" />
+                  </motion.button>
+                </form>
+              </div>
             )}
           </div>
         </div>
@@ -1938,22 +2005,35 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 {/* Contact List */}
                 <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[160px] max-h-[300px]">
                   {(() => {
+                    const rawList: (User | { id: string; name: string; username?: string; avatar: string; isOnline?: boolean; isGroup?: boolean })[] = [
+                      ...threads.map((t) =>
+                        t.isGroup
+                          ? {
+                              id: t.id,
+                              name: t.groupName || 'Group Chat',
+                              username: 'group',
+                              avatar: t.groupAvatar || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150',
+                              isOnline: true,
+                              isGroup: true,
+                            }
+                          : t.participant
+                      ),
+                      ...MOCK_USERS,
+                      ...(allUsers || []),
+                    ];
+
                     const contacts = Array.from(
                       new Map(
-                        [
-                          ...threads.map((t) => t.participant),
-                          ...MOCK_USERS,
-                        ]
-                          .filter((u) => u.id !== currentUser.id)
+                        rawList
+                          .filter((u): u is User => Boolean(u && u.id && u.id !== currentUser.id))
                           .map((u) => [u.id, u])
                       ).values()
                     ).filter((u) => {
                       if (!forwardSearchQuery.trim()) return true;
                       const q = forwardSearchQuery.toLowerCase();
-                      return (
-                        u.name.toLowerCase().includes(q) ||
-                        u.username.toLowerCase().includes(q)
-                      );
+                      const name = (u.name || '').toLowerCase();
+                      const username = (u.username || '').toLowerCase();
+                      return name.includes(q) || username.includes(q);
                     });
 
                     if (contacts.length === 0) {
@@ -1967,7 +2047,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     return contacts.map((contact) => (
                       <button
                         key={contact.id}
-                        onClick={() => handleForwardMessage(contact)}
+                        onClick={() => handleForwardMessage(contact as any)}
                         className="w-full flex items-center justify-between p-2.5 rounded-[16px] hover:bg-blue-50/60 active:bg-blue-100/70 transition group cursor-pointer text-left"
                       >
                         <div className="flex items-center gap-3 min-w-0">
@@ -1986,11 +2066,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               {contact.name}
                             </h4>
                             <p className="text-[11px] text-slate-400 truncate">
-                              @{contact.username}
+                              @{contact.username || 'user'}
                             </p>
                           </div>
                         </div>
-                        <div className="px-3 py-1.5 rounded-full bg-slate-100 group-hover:bg-blue-500 group-hover:text-white text-slate-600 text-[11px] font-semibold flex items-center gap-1 transition flex-shrink-0 ml-2">
+                        <div className="px-3 py-1.5 rounded-full bg-slate-100 group-hover:bg-[#5B9DFF] group-hover:text-white text-slate-600 text-[11px] font-semibold flex items-center gap-1 transition flex-shrink-0 ml-2 shadow-2xs">
                           <span>Send</span>
                           <Forward className="w-3 h-3" />
                         </div>
@@ -3002,6 +3082,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
           onJoinToggle={() => handleToggleCommunityState(selectedChannelCommunity)}
           onOpenOwnerAdmin={() => openOwnerManager(selectedChannelCommunity)}
           onShowToast={(msg, type) => triggerCommunityToast(msg, type || 'info')}
+          onForwardMessage={(receiverId, text, imageUrl, voiceNote) => {
+            onSendMessage(
+              receiverId,
+              text,
+              imageUrl,
+              voiceNote,
+              'normal',
+              true,
+              selectedChannelCommunity.name
+            );
+          }}
         />
       )}
 
