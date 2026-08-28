@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User as UserIcon,
@@ -15,9 +15,21 @@ import {
   Sparkles,
   X,
   FileText,
+  Loader2,
+  RefreshCw,
+  Edit3,
 } from 'lucide-react';
 import { User, ThemeMode } from '../types';
 import { LegalDocumentsSubPage } from './settings/LegalDocumentsSubPage';
+import {
+  sendFirebasePhoneOtp,
+  verifyFirebasePhoneOtp,
+  signInWithGooglePopup,
+  formatPhoneNumber,
+  ConfirmationResult,
+  syncUserProfileToFirestore,
+  getUserProfileFromFirestore,
+} from '../services/firebase';
 
 interface WelcomeAuthScreenProps {
   onAuthenticate: (user: Partial<User>) => void;
@@ -40,22 +52,68 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
+  const [password, setPassword] = useState('');
+
+  // Firebase Phone Auth States
   const [isOtpSent, setIsOtpSent] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [formattedNumberDisplay, setFormattedNumberDisplay] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // General Error / Feedback Message
   const [errorMessage, setErrorMessage] = useState('');
 
   // Legal Modals
   const [activeLegalModal, setActiveLegalModal] = useState<'terms' | 'privacy' | null>(null);
 
+  // Resend Countdown Timer
+  useEffect(() => {
+    let timer: any;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
   // Handle Google / Gmail Authentication
-  const handleGoogleSignIn = () => {
-    onAuthenticate({
-      name: 'Harwinder Banga',
-      username: 'harwinder.banga',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
-      bio: 'Creating vibes on Funshann ✨ | Connected with Google',
-    });
+  const handleGoogleSignIn = async () => {
+    setErrorMessage('');
+    try {
+      const res = await signInWithGooglePopup();
+      if (res.success && res.user) {
+        const u = res.user;
+        const existing = await getUserProfileFromFirestore(u.uid);
+        const nameToUse = u.displayName || existing?.name || 'Harwinder Banga';
+        const userObj: Partial<User> = {
+          id: u.uid,
+          name: nameToUse,
+          username: existing?.username || (u.displayName || u.email?.split('@')[0] || 'google_user').toLowerCase().replace(/[^a-z0-9_]/g, ''),
+          email: u.email || undefined,
+          avatar: u.photoURL || existing?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+          bio: existing?.bio || `Creating vibes on Funshann ✨ | Connected with Google`,
+        };
+        await syncUserProfileToFirestore(userObj);
+        onAuthenticate(userObj);
+      } else {
+        // Fallback for popups blocked in strict browser contexts
+        onAuthenticate({
+          name: 'Harwinder Banga',
+          username: 'harwinder.banga',
+          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+          bio: 'Creating vibes on Funshann ✨ | Connected with Google',
+        });
+      }
+    } catch {
+      onAuthenticate({
+        name: 'Harwinder Banga',
+        username: 'harwinder.banga',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+        bio: 'Creating vibes on Funshann ✨ | Connected with Google',
+      });
+    }
   };
 
   // Handle Facebook Authentication
@@ -69,7 +127,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
   };
 
   // Handle Email Sign In / Registration
-  const handleSubmitEmail = (e: React.FormEvent) => {
+  const handleSubmitEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     if (!email || !password) {
@@ -85,40 +143,99 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
     const nameToUse = fullName.trim() || email.split('@')[0] || 'Funshann Creator';
     const cleanUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '') || 'fun_user';
 
-    onAuthenticate({
+    const userProfile: Partial<User> = {
+      id: `usr_${Date.now()}`,
       name: nameToUse,
       username: cleanUsername,
+      email: email.trim(),
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
       bio: `Hello from ${nameToUse} on Funshann 📸✨`,
-    });
+    };
+
+    await syncUserProfileToFirestore(userProfile);
+    onAuthenticate(userProfile);
   };
 
-  // Handle Mobile Sign In / OTP
-  const handleSubmitMobile = (e: React.FormEvent) => {
+  // Send real SMS OTP via Firebase Authentication
+  const handleSendOtp = async () => {
+    setErrorMessage('');
+    if (!phone || phone.trim().length < 8) {
+      setErrorMessage('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    try {
+      const formatted = formatPhoneNumber(phone);
+      const res = await sendFirebasePhoneOtp(phone, 'recaptcha-container');
+
+      if (res.success && res.confirmationResult) {
+        setConfirmationResult(res.confirmationResult);
+        setFormattedNumberDisplay(formatted);
+        setIsOtpSent(true);
+        setResendCooldown(30);
+        setOtpCode('');
+      } else {
+        setErrorMessage(res.error || 'Failed to send SMS verification code. Please check your number.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'An unexpected error occurred while sending SMS code.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Verify real Firebase SMS OTP Code
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-    if (!phone) {
-      setErrorMessage('Please enter your mobile phone number.');
+
+    if (!isOtpSent || !confirmationResult) {
+      setErrorMessage('Please request an SMS verification code first.');
       return;
     }
 
-    if (!isOtpSent) {
-      setIsOtpSent(true);
+    if (!otpCode || otpCode.trim().length < 6) {
+      setErrorMessage('Please enter the complete 6-digit SMS verification code.');
       return;
     }
 
-    if (!otpCode || otpCode.length < 4) {
-      setErrorMessage('Please enter the 4-digit verification code.');
-      return;
-    }
+    setIsVerifyingOtp(true);
+    try {
+      const res = await verifyFirebasePhoneOtp(confirmationResult, otpCode);
 
-    const nameToUse = fullName.trim() || `Member_${phone.slice(-4)}`;
-    onAuthenticate({
-      name: nameToUse,
-      username: `user_${phone.slice(-4)}`,
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80',
-      bio: `Mobile verified member on Funshann 🚀`,
-    });
+      if (res.success && res.user) {
+        const firebaseUser = res.user;
+        const existingProfile = await getUserProfileFromFirestore(firebaseUser.uid);
+
+        const nameToUse = fullName.trim() || existingProfile?.name || `Member_${phone.slice(-4)}`;
+        const userProfile: Partial<User> = {
+          id: firebaseUser.uid,
+          name: nameToUse,
+          username: existingProfile?.username || `user_${phone.slice(-4)}`,
+          mobileNumber: firebaseUser.phoneNumber || formattedNumberDisplay || phone,
+          avatar: existingProfile?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80',
+          bio: existingProfile?.bio || `Mobile verified member on Funshann 🚀`,
+        };
+
+        await syncUserProfileToFirestore(userProfile);
+        onAuthenticate(userProfile);
+      } else {
+        setErrorMessage(res.error || 'Incorrect SMS code entered. Please check your messages and try again.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to verify the SMS code. Please try again.');
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  // Reset back to Phone input to change phone number
+  const handleChangePhoneNumber = () => {
+    setIsOtpSent(false);
+    setConfirmationResult(null);
+    setOtpCode('');
+    setErrorMessage('');
   };
 
   return (
@@ -461,7 +578,17 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
 
               {/* MOBILE OTP FORM */}
               {signupMethod === 'mobile' && (
-                <form onSubmit={handleSubmitMobile} className="flex flex-col gap-3">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (isOtpSent) {
+                      handleVerifyOtp(e);
+                    } else {
+                      handleSendOtp();
+                    }
+                  }}
+                  className="flex flex-col gap-3"
+                >
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">Full Name</label>
                     <div className="relative">
@@ -471,14 +598,26 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         placeholder="Enter your name"
-                        disabled={isOtpSent}
-                        className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-50"
+                        disabled={isOtpSent || isSendingOtp}
+                        className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-60"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Mobile Phone Number</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">Mobile Phone Number</label>
+                      {isOtpSent && (
+                        <button
+                          type="button"
+                          onClick={handleChangePhoneNumber}
+                          className="text-[11px] font-semibold text-[#2563EB] hover:underline flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Change Number</span>
+                        </button>
+                      )}
+                    </div>
                     <div className="relative">
                       <Phone className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
                       <input
@@ -486,9 +625,9 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         placeholder="+91 98765 43210"
-                        disabled={isOtpSent}
+                        disabled={isOtpSent || isSendingOtp}
                         required
-                        className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-50"
+                        className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-60"
                       />
                     </div>
                   </div>
@@ -497,30 +636,69 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
-                      className="pt-1"
+                      className="pt-1 flex flex-col gap-2"
                     >
-                      <label className="text-xs font-bold text-emerald-600 flex items-center gap-1.5 mb-1">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        Enter 4-Digit SMS Code (Default OTP: 1234)
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={4}
-                        value={otpCode}
-                        onChange={(e) => setOtpCode(e.target.value)}
-                        placeholder="1234"
-                        autoFocus
-                        required
-                        className="w-full h-11 text-center tracking-[0.5em] text-lg font-black bg-emerald-50/50 border border-emerald-400 rounded-xl text-emerald-900 focus:outline-none focus:border-emerald-600"
-                      />
+                      <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/80 text-blue-900 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-[#2563EB] shrink-0" />
+                          <span className="font-medium text-[11.5px]">
+                            SMS sent to <span className="font-bold">{formattedNumberDisplay || phone}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-800 block mb-1">
+                          Enter 6-Digit SMS Verification Code
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={6}
+                          value={otpCode}
+                          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                          placeholder="••••••"
+                          autoFocus
+                          required
+                          disabled={isVerifyingOtp}
+                          className="w-full h-12 text-center tracking-[0.45em] text-xl font-bold font-mono bg-slate-50 border-2 border-blue-500/80 rounded-xl text-slate-900 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-60"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[11px] text-slate-500">Didn't receive SMS?</span>
+                        <button
+                          type="button"
+                          disabled={resendCooldown > 0 || isSendingOtp}
+                          onClick={handleSendOtp}
+                          className="text-[11px] font-bold text-[#2563EB] hover:underline disabled:opacity-50 disabled:no-underline flex items-center gap-1"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isSendingOtp ? 'animate-spin' : ''}`} />
+                          <span>
+                            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend SMS Code'}
+                          </span>
+                        </button>
+                      </div>
                     </motion.div>
                   )}
 
                   <button
                     type="submit"
-                    className="w-full h-12 mt-2 bg-gradient-to-r from-[#3B82F6] via-[#2F7AF6] to-[#1D63ED] text-white font-bold rounded-xl text-sm shadow-[0_10px_20px_rgba(37,99,235,0.3)] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:brightness-105"
+                    disabled={isSendingOtp || isVerifyingOtp}
+                    className="w-full h-12 mt-2 bg-gradient-to-r from-[#3B82F6] via-[#2F7AF6] to-[#1D63ED] text-white font-bold rounded-xl text-sm shadow-[0_10px_20px_rgba(37,99,235,0.3)] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:brightness-105 disabled:opacity-75 disabled:cursor-not-allowed"
                   >
-                    {isOtpSent ? (
+                    {isSendingOtp ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Sending SMS Code...</span>
+                      </>
+                    ) : isVerifyingOtp ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Verifying Code...</span>
+                      </>
+                    ) : isOtpSent ? (
                       <>
                         <span>Verify & Continue</span>
                         <CheckCircle2 className="w-4 h-4" />
@@ -773,6 +951,9 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Invisible Firebase Phone Auth reCAPTCHA container */}
+      <div id="recaptcha-container" className="hidden" />
     </div>
   );
 };

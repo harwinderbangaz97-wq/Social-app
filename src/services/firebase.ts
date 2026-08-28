@@ -4,6 +4,11 @@ import {
   signInAnonymously,
   onAuthStateChanged,
   User as FirebaseUser,
+  signInWithPhoneNumber,
+  RecaptchaVerifier,
+  ConfirmationResult,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -76,6 +81,186 @@ export const ensureFirebaseAuth = async (): Promise<FirebaseUser | null> => {
       }
     });
   });
+};
+
+// ==========================================
+// Firebase Phone & Google Authentication
+// ==========================================
+
+export type { ConfirmationResult };
+
+/**
+ * Standardizes international and Indian mobile phone numbers into E.164 format (+91XXXXXXXXXX)
+ */
+export const formatPhoneNumber = (rawPhone: string): string => {
+  const cleaned = rawPhone.trim().replace(/[\s\-()]/g, '');
+  if (cleaned.startsWith('+')) {
+    return cleaned;
+  }
+  // Standard Indian 10-digit mobile number
+  if (/^\d{10}$/.test(cleaned)) {
+    return `+91${cleaned}`;
+  }
+  // 11-digit number starting with 0 (e.g. 09876543210)
+  if (cleaned.startsWith('0') && cleaned.length === 11) {
+    return `+91${cleaned.slice(1)}`;
+  }
+  // 12-digit number starting with 91 (e.g. 919876543210)
+  if (cleaned.startsWith('91') && cleaned.length === 12) {
+    return `+${cleaned}`;
+  }
+  return `+${cleaned}`;
+};
+
+/**
+ * Safely initializes or clears an invisible RecaptchaVerifier on the specified HTML container element ID
+ */
+export const setupRecaptchaVerifier = (containerId: string = 'recaptcha-container'): RecaptchaVerifier => {
+  const windowObj = window as any;
+  if (windowObj.recaptchaVerifier) {
+    try {
+      windowObj.recaptchaVerifier.clear();
+    } catch (e) {
+      console.warn('Error clearing existing RecaptchaVerifier:', e);
+    }
+  }
+
+  const verifier = new RecaptchaVerifier(auth, containerId, {
+    size: 'invisible',
+    callback: () => {
+      // reCAPTCHA verification passed
+    },
+    'expired-callback': () => {
+      console.warn('reCAPTCHA expired, user may need to retry');
+    },
+  });
+
+  windowObj.recaptchaVerifier = verifier;
+  return verifier;
+};
+
+export interface PhoneAuthSendResult {
+  success: boolean;
+  confirmationResult?: ConfirmationResult;
+  error?: string;
+}
+
+/**
+ * Sends a real SMS verification code to the target phone number using Firebase Phone Authentication.
+ */
+export const sendFirebasePhoneOtp = async (
+  rawPhoneNumber: string,
+  containerId: string = 'recaptcha-container'
+): Promise<PhoneAuthSendResult> => {
+  try {
+    const formatted = formatPhoneNumber(rawPhoneNumber);
+    if (!formatted || formatted.length < 8) {
+      return {
+        success: false,
+        error: 'Please enter a valid mobile number with country code.',
+      };
+    }
+
+    const verifier = setupRecaptchaVerifier(containerId);
+    const confirmationResult = await signInWithPhoneNumber(auth, formatted, verifier);
+
+    return {
+      success: true,
+      confirmationResult,
+    };
+  } catch (error: any) {
+    console.error('Firebase sendPhoneOtp error details:', error);
+    let message = 'Failed to send SMS verification code. Please try again.';
+    if (error?.code === 'auth/invalid-phone-number') {
+      message = 'Invalid phone number format. Please enter a valid 10-digit mobile number.';
+    } else if (error?.code === 'auth/quota-exceeded' || error?.code === 'auth/too-many-requests') {
+      message = 'SMS quota or rate limit reached. Please wait a moment before trying again.';
+    } else if (error?.code === 'auth/captcha-check-failed') {
+      message = 'reCAPTCHA check failed. Please refresh the page and try again.';
+    } else if (error?.code === 'auth/operation-not-allowed' || error?.code === 'auth/admin-restricted-operation') {
+      message = 'Phone Authentication must be enabled under Firebase Console > Authentication > Sign-in method.';
+    } else if (error?.message) {
+      message = error.message;
+    }
+
+    return {
+      success: false,
+      error: message,
+    };
+  }
+};
+
+export interface PhoneAuthVerifyResult {
+  success: boolean;
+  user?: FirebaseUser;
+  error?: string;
+}
+
+/**
+ * Verifies the SMS verification code entered by the user against Firebase ConfirmationResult
+ */
+export const verifyFirebasePhoneOtp = async (
+  confirmationResult: ConfirmationResult,
+  otpCode: string
+): Promise<PhoneAuthVerifyResult> => {
+  try {
+    if (!confirmationResult) {
+      return {
+        success: false,
+        error: 'No active SMS verification session. Please request a new verification code.',
+      };
+    }
+
+    const trimmedCode = otpCode.trim();
+    if (!trimmedCode) {
+      return {
+        success: false,
+        error: 'Please enter the SMS verification code.',
+      };
+    }
+
+    const userCredential = await confirmationResult.confirm(trimmedCode);
+    return {
+      success: true,
+      user: userCredential.user,
+    };
+  } catch (error: any) {
+    console.error('Firebase verifyPhoneOtp error details:', error);
+    let message = 'Verification failed. Please check the code and try again.';
+    if (error?.code === 'auth/invalid-verification-code') {
+      message = 'Incorrect SMS verification code. Please check your SMS and try again.';
+    } else if (error?.code === 'auth/code-expired') {
+      message = 'The verification code has expired. Please request a new SMS code.';
+    } else if (error?.message) {
+      message = error.message;
+    }
+
+    return {
+      success: false,
+      error: message,
+    };
+  }
+};
+
+/**
+ * Signs in user with Google Account using Firebase Auth popup
+ */
+export const signInWithGooglePopup = async (): Promise<{ success: boolean; user?: FirebaseUser; error?: string }> => {
+  try {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const result = await signInWithPopup(auth, provider);
+    return {
+      success: true,
+      user: result.user,
+    };
+  } catch (error: any) {
+    console.warn('Firebase Google Sign-In note:', error);
+    return {
+      success: false,
+      error: error?.message || 'Google Sign-In failed or was cancelled.',
+    };
+  }
 };
 
 // ==========================================
@@ -208,7 +393,7 @@ export const uploadChatMediaToStorage = async (
 // ==========================================
 
 // 1. User Profiles
-export const syncUserProfileToFirestore = async (user: User): Promise<void> => {
+export const syncUserProfileToFirestore = async (user: Partial<User>): Promise<void> => {
   try {
     await ensureFirebaseAuth();
     if (!user || !user.id) return;
