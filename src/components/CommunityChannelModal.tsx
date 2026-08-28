@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { MOCK_USERS } from '../data/mockData';
 import { User, VoiceNoteData } from '../types';
+import { syncCommunityToFirestore } from '../services/firebase';
 
 export interface CommunityMessage {
   id: string;
@@ -431,7 +432,14 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
       reactions: [],
     };
 
-    setMessages((prev) => [...prev, newMsg]);
+    setMessages((prev) => {
+      const updated = [...prev, newMsg];
+      syncCommunityToFirestore({
+        ...community,
+        messages: updated,
+      }).catch(console.warn);
+      return updated;
+    });
     setInputText('');
     setAttachedMedia(null);
   };

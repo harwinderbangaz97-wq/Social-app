@@ -51,6 +51,18 @@ import { LanguageProvider, useTranslation } from './context/LanguageContext';
 import { AndroidGestureBack } from './components/AndroidGestureBack';
 import { SplashScreen } from './components/SplashScreen';
 import { WelcomeAuthScreen } from './components/WelcomeAuthScreen';
+import {
+  ensureFirebaseAuth,
+  syncUserProfileToFirestore,
+  syncPostToFirestore,
+  syncStoryToFirestore,
+  syncChatThreadToFirestore,
+  syncNotificationToFirestore,
+  uploadUserAvatarToStorage,
+  uploadPostImageToStorage,
+  uploadStoryMediaToStorage,
+  uploadChatMediaToStorage,
+} from './services/firebase';
 
 function AppContent() {
   const {
@@ -136,6 +148,26 @@ function AppContent() {
       } catch (e) {
         console.error(e);
       }
+      syncUserProfileToFirestore(nextUser).catch(console.warn);
+
+      // If avatar is newly picked base64 data URL, upload to Firebase Cloud Storage in background
+      if (updated.avatar && updated.avatar.startsWith('data:')) {
+        uploadUserAvatarToStorage(prev.id, updated.avatar)
+          .then((downloadUrl) => {
+            if (downloadUrl && downloadUrl !== updated.avatar) {
+              const updatedWithStorageUrl = { ...nextUser, avatar: downloadUrl };
+              setCurrentUser(updatedWithStorageUrl);
+              try {
+                localStorage.setItem('funshann_current_user', JSON.stringify(updatedWithStorageUrl));
+              } catch (err) {
+                console.warn(err);
+              }
+              syncUserProfileToFirestore(updatedWithStorageUrl).catch(console.warn);
+            }
+          })
+          .catch(console.warn);
+      }
+
       return nextUser;
     });
 
@@ -199,8 +231,15 @@ function AppContent() {
     }
   });
 
-  // Seamless Network Connectivity & Recovery Listener
+  // Seamless Network Connectivity & Recovery Listener and Firebase Auth Init
   useEffect(() => {
+    // Initialize Firebase Auth Session in background
+    ensureFirebaseAuth()
+      .then(() => {
+        syncUserProfileToFirestore(currentUser).catch(console.warn);
+      })
+      .catch(console.warn);
+
     const handleOnline = () => {
       showToast('Connection restored 🌐');
     };
@@ -538,6 +577,23 @@ function AppContent() {
     };
 
     setPosts([createdPost, ...posts]);
+    syncPostToFirestore(createdPost).catch(console.warn);
+
+    // If post image is local data URL, upload to Firebase Storage and update post with download URL
+    if (createdPost.imageUrl && createdPost.imageUrl.startsWith('data:')) {
+      uploadPostImageToStorage(currentUser.id, createdPost.imageUrl)
+        .then((downloadUrl) => {
+          if (downloadUrl && downloadUrl !== createdPost.imageUrl) {
+            const updatedPostWithStorageUrl = { ...createdPost, imageUrl: downloadUrl };
+            setPosts((prevPosts) =>
+              prevPosts.map((p) => (p.id === createdPost.id ? updatedPostWithStorageUrl : p))
+            );
+            syncPostToFirestore(updatedPostWithStorageUrl).catch(console.warn);
+          }
+        })
+        .catch(console.warn);
+    }
+
     setCurrentUser((prev) => ({
       ...prev,
       postsCount: prev.postsCount + 1,
@@ -721,7 +777,7 @@ function AppContent() {
       if (existing) {
         return prevThreads.map((thread) => {
           if (thread.participant?.id === receiverId || thread.id === receiverId) {
-            return {
+            const updatedThread = {
               ...thread,
               lastMessage: {
                 text: voiceNote
@@ -736,6 +792,8 @@ function AppContent() {
               },
               messages: [...thread.messages, newMsg],
             };
+            syncChatThreadToFirestore(updatedThread).catch(console.warn);
+            return updatedThread;
           }
           return thread;
         });
@@ -773,8 +831,58 @@ function AppContent() {
         messages: [newMsg],
       };
 
+      syncChatThreadToFirestore(newThread).catch(console.warn);
       return [newThread, ...prevThreads];
     });
+
+    // If message includes local data URL media or voice note, upload to Firebase Storage in background
+    if (imageUrl && imageUrl.startsWith('data:')) {
+      uploadChatMediaToStorage(receiverId, imageUrl, 'image')
+        .then((downloadUrl) => {
+          if (downloadUrl && downloadUrl !== imageUrl) {
+            setChatThreads((prevThreads) =>
+              prevThreads.map((t) => {
+                if (t.participant?.id === receiverId || t.id === receiverId) {
+                  const updatedThread = {
+                    ...t,
+                    messages: t.messages.map((m) =>
+                      m.id === newMsg.id ? { ...m, imageUrl: downloadUrl } : m
+                    ),
+                  };
+                  syncChatThreadToFirestore(updatedThread).catch(console.warn);
+                  return updatedThread;
+                }
+                return t;
+              })
+            );
+          }
+        })
+        .catch(console.warn);
+    } else if (voiceNote?.audioUrl && voiceNote.audioUrl.startsWith('data:')) {
+      uploadChatMediaToStorage(receiverId, voiceNote.audioUrl, 'audio')
+        .then((downloadUrl) => {
+          if (downloadUrl && downloadUrl !== voiceNote.audioUrl) {
+            setChatThreads((prevThreads) =>
+              prevThreads.map((t) => {
+                if (t.participant?.id === receiverId || t.id === receiverId) {
+                  const updatedThread = {
+                    ...t,
+                    messages: t.messages.map((m) =>
+                      m.id === newMsg.id
+                        ? { ...m, voiceNote: { ...m.voiceNote!, audioUrl: downloadUrl } }
+                        : m
+                    ),
+                  };
+                  syncChatThreadToFirestore(updatedThread).catch(console.warn);
+                  return updatedThread;
+                }
+                return t;
+              })
+            );
+          }
+        })
+        .catch(console.warn);
+    }
 
     // Simulate participant typing indicator after 350ms, then deliver reply after typing completes
     setTimeout(() => {
@@ -867,6 +975,7 @@ function AppContent() {
             chatUserId: receiverId,
           };
           setNotifications((prev) => [notifItem, ...prev]);
+          syncNotificationToFirestore(notifItem).catch(console.warn);
         }
 
         return prevThreads.map((thread) => {
@@ -1090,6 +1199,24 @@ function AppContent() {
 
   const handlePublishStory = (newStory: Story) => {
     setStories((prev) => [newStory, ...prev]);
+    syncStoryToFirestore(newStory).catch(console.warn);
+
+    // If story media is a local data URL, upload to Firebase Storage and update story with download URL
+    if (newStory.mediaUrl && newStory.mediaUrl.startsWith('data:')) {
+      const isVideo = newStory.mediaUrl.startsWith('data:video') || newStory.mediaUrl.endsWith('.mp4');
+      uploadStoryMediaToStorage(currentUser.id, newStory.mediaUrl, isVideo)
+        .then((downloadUrl) => {
+          if (downloadUrl && downloadUrl !== newStory.mediaUrl) {
+            const updatedStoryWithStorageUrl = { ...newStory, mediaUrl: downloadUrl };
+            setStories((prevStories) =>
+              prevStories.map((s) => (s.id === newStory.id ? updatedStoryWithStorageUrl : s))
+            );
+            syncStoryToFirestore(updatedStoryWithStorageUrl).catch(console.warn);
+          }
+        })
+        .catch(console.warn);
+    }
+
     showToast('Your new story has been added! ✨');
     openStoryViewer(0);
   };

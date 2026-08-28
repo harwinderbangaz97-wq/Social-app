@@ -1,4 +1,5 @@
 import { UserReportItem, BugReportItem } from '../types';
+import { syncUserReportToFirestore, syncBugReportToFirestore } from './firebase';
 
 const STORAGE_USER_REPORTS = 'funshann_user_submitted_reports';
 const STORAGE_BUG_REPORTS = 'funshann_bug_reports';
@@ -69,6 +70,7 @@ export const submitUserReport = (newReport: Omit<UserReportItem, 'id' | 'submitt
   const current = getUserReports();
   const updated = [item, ...current];
   saveUserReports(updated);
+  syncUserReportToFirestore(item).catch(console.warn);
   return item;
 };
 
@@ -97,5 +99,6 @@ export const submitBugReport = (report: Omit<BugReportItem, 'id' | 'submittedAt'
   } catch (e) {
     console.error(e);
   }
+  syncBugReportToFirestore(item).catch(console.warn);
   return item;
 };
