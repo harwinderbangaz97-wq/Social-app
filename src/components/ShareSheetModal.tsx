@@ -36,8 +36,18 @@ export const ShareSheetModal: React.FC<ShareSheetModalProps> = ({
 
   if (!isOpen || !post) return null;
 
+  const postAuthor = post.user || {
+    id: post.userId || 'author',
+    name: 'Funshann Member',
+    username: 'user',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    postsCount: 0,
+    followersCount: 0,
+    followingCount: 0,
+  };
+
   const postUrl = `https://funshann.app/p/${post.id}`;
-  const shareText = `Check out this post by @${post.user.username} on Funshann: "${post.caption}"`;
+  const shareText = `Check out this post by @${postAuthor.username} on Funshann: "${post.caption || ''}"`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(postUrl);
@@ -54,7 +64,7 @@ export const ShareSheetModal: React.FC<ShareSheetModalProps> = ({
     const encodedUrl = encodeURIComponent(postUrl);
     const encodedText = encodeURIComponent(shareText);
     const encodedMedia = encodeURIComponent(post.imageUrl);
-    const encodedDesc = encodeURIComponent(post.caption);
+    const encodedDesc = encodeURIComponent(post.caption || '');
 
     let targetUrl = '';
 
@@ -72,7 +82,7 @@ export const ShareSheetModal: React.FC<ShareSheetModalProps> = ({
         targetUrl = `https://www.snapchat.com/scan?attachmentUrl=${encodedUrl}`;
         break;
       case 'email':
-        targetUrl = `mailto:?subject=${encodeURIComponent(`Funshann post by ${post.user.name}`)}&body=${encodedText}%0A%0A${encodedUrl}`;
+        targetUrl = `mailto:?subject=${encodeURIComponent(`Funshann post by ${postAuthor.name}`)}&body=${encodedText}%0A%0A${encodedUrl}`;
         break;
       case 'pinterest':
         targetUrl = `https://pinterest.com/pin/create/button/?url=${encodedUrl}&media=${encodedMedia}&description=${encodedDesc}`;
@@ -81,8 +91,8 @@ export const ShareSheetModal: React.FC<ShareSheetModalProps> = ({
         if (navigator.share) {
           navigator
             .share({
-              title: `Funshann - ${post.user.name}`,
-              text: post.caption,
+              title: `Funshann - ${postAuthor.name}`,
+              text: post.caption || '',
               url: postUrl,
             })
             .catch(() => {});
@@ -212,20 +222,24 @@ export const ShareSheetModal: React.FC<ShareSheetModalProps> = ({
             <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
               {users.map((user) => {
                 const isSent = sentMap[user.id];
+                const userAvatar =
+                  user.avatar ||
+                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+                const userName = user.name || 'User';
                 return (
                   <div key={user.id} className="flex flex-col items-center flex-shrink-0">
                     <div className="relative w-12 h-12 rounded-full neu-raised p-0.5 mb-1">
                       <img
-                        src={user.avatar}
-                        alt={user.name}
+                        src={userAvatar}
+                        alt={userName}
                         className="w-full h-full rounded-full object-cover"
                       />
                     </div>
                     <span className="text-[11px] font-medium text-slate-700 max-w-[56px] truncate text-center">
-                      {user.name.split(' ')[0]}
+                      {userName.split(' ')[0]}
                     </span>
                     <button
-                      onClick={() => handleSendToUser(user.id, user.name)}
+                      onClick={() => handleSendToUser(user.id, userName)}
                       disabled={isSent}
                       className={`mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full transition ${
                         isSent

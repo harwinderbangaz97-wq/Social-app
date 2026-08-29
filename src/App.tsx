@@ -54,10 +54,20 @@ import { WelcomeAuthScreen } from './components/WelcomeAuthScreen';
 import {
   ensureFirebaseAuth,
   syncUserProfileToFirestore,
+  getUserProfileFromFirestore,
   syncPostToFirestore,
+  deletePostFromFirestore,
+  updatePostInFirestore,
+  subscribeToPosts,
   syncStoryToFirestore,
+  deleteStoryFromFirestore,
+  subscribeToStories,
   syncChatThreadToFirestore,
+  deleteChatThreadFromFirestore,
+  subscribeToChatThreads,
   syncNotificationToFirestore,
+  subscribeToNotifications,
+  subscribeToUsers,
   uploadUserAvatarToStorage,
   uploadPostImageToStorage,
   uploadStoryMediaToStorage,
@@ -231,14 +241,54 @@ function AppContent() {
     }
   });
 
-  // Seamless Network Connectivity & Recovery Listener and Firebase Auth Init
+  // Seamless Network Connectivity & Recovery Listener, Firebase Auth Init, and Real-time Database Subscriptions
   useEffect(() => {
-    // Initialize Firebase Auth Session in background
+    // 1. Initialize Firebase Auth Session in background and sync current user profile
     ensureFirebaseAuth()
       .then(() => {
         syncUserProfileToFirestore(currentUser).catch(console.warn);
+        if (currentUser.id) {
+          getUserProfileFromFirestore(currentUser.id)
+            .then((remoteUser) => {
+              if (remoteUser) {
+                setCurrentUser((prev) => ({ ...prev, ...remoteUser }));
+              }
+            })
+            .catch(console.warn);
+        }
       })
       .catch(console.warn);
+
+    // 2. Real-time Firestore Subscriptions for Posts, Stories, Chat Threads, Users, and Notifications
+    const unsubPosts = subscribeToPosts((remotePosts) => {
+      if (remotePosts && remotePosts.length > 0) {
+        setPosts(remotePosts);
+      }
+    });
+
+    const unsubStories = subscribeToStories((remoteStories) => {
+      if (remoteStories && remoteStories.length > 0) {
+        setStories(remoteStories);
+      }
+    });
+
+    const unsubThreads = subscribeToChatThreads((remoteThreads) => {
+      if (remoteThreads && remoteThreads.length > 0) {
+        setChatThreads(remoteThreads);
+      }
+    });
+
+    const unsubUsers = subscribeToUsers((remoteUsers) => {
+      if (remoteUsers && remoteUsers.length > 0) {
+        setUsers(remoteUsers);
+      }
+    });
+
+    const unsubNotifs = subscribeToNotifications((remoteNotifs) => {
+      if (remoteNotifs && remoteNotifs.length > 0) {
+        setNotifications(remoteNotifs);
+      }
+    });
 
     const handleOnline = () => {
       showToast('Connection restored 🌐');
@@ -257,6 +307,11 @@ function AppContent() {
     window.addEventListener('offline', handleOffline);
 
     return () => {
+      unsubPosts();
+      unsubStories();
+      unsubThreads();
+      unsubUsers();
+      unsubNotifs();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       delete (window as unknown as { __onFunshannNetworkRecovered?: () => void }).__onFunshannNetworkRecovered;
@@ -411,9 +466,19 @@ function AppContent() {
           authorId: target.userId || target.user?.id || '',
           wasRemoved: true,
         };
+        deletePostFromFirestore(postId).catch(console.warn);
         // Filter out this post from active feed
         return prevPosts.filter((p) => p.id !== postId);
       }
+
+      // Sync reaction directly to Firestore
+      updatePostInFirestore(postId, {
+        likesCount: nextLikesCount,
+        dislikesCount: nextDislikesCount,
+        isLiked: nextIsLiked,
+        isDisliked: nextIsDisliked,
+        userReaction: nextUserReaction,
+      }).catch(console.warn);
 
       // Update post in state
       return prevPosts.map((p) => {
@@ -470,6 +535,7 @@ function AppContent() {
       };
 
       setNotifications((prev) => [safetyNotif, ...prev]);
+      syncNotificationToFirestore(safetyNotif).catch(console.warn);
       showToast('Post removed due to community safety protection');
     }
   };
@@ -493,11 +559,16 @@ function AppContent() {
       prevPosts.map((p) => {
         if (p.id === postId) {
           const updatedComments = [newComment, ...p.comments];
-          return {
+          const updatedPost = {
             ...p,
             comments: updatedComments,
             commentsCount: p.commentsCount + 1,
           };
+          updatePostInFirestore(postId, {
+            comments: updatedComments,
+            commentsCount: updatedPost.commentsCount,
+          }).catch(console.warn);
+          return updatedPost;
         }
         return p;
       })
@@ -521,6 +592,7 @@ function AppContent() {
       prevPosts.map((p) => {
         if (p.id === postId) {
           const nextSaved = !p.isSaved;
+          updatePostInFirestore(postId, { isSaved: nextSaved }).catch(console.warn);
           showToast(nextSaved ? 'Saved to your collection! 🔖' : 'Removed from saved posts');
           return { ...p, isSaved: nextSaved };
         }
@@ -533,6 +605,7 @@ function AppContent() {
   const handleDeletePost = (postId: string) => {
     const target = posts.find((p) => p.id === postId);
     setPosts((prevPosts) => prevPosts.filter((p) => p.id !== postId));
+    deletePostFromFirestore(postId).catch(console.warn);
     if (target && (target.userId === currentUser.id || target.user.id === currentUser.id)) {
       setCurrentUser((prev) => ({
         ...prev,
@@ -553,6 +626,7 @@ function AppContent() {
     setPosts((prevPosts) =>
       prevPosts.map((p) => (p.id === postId ? { ...p, caption: newCaption } : p))
     );
+    updatePostInFirestore(postId, { caption: newCaption }).catch(console.warn);
   };
 
   // Publish New Photo Post
@@ -608,12 +682,14 @@ function AppContent() {
       prevUsers.map((u) => {
         if (u.id === userId) {
           const isFollowing = !u.isFollowing;
-          showToast(isFollowing ? `Following ${u.name}` : `Unfollowed ${u.name}`);
-          return {
+          const updatedUser = {
             ...u,
             isFollowing,
-            followersCount: isFollowing ? u.followersCount + 1 : u.followersCount - 1,
+            followersCount: isFollowing ? u.followersCount + 1 : Math.max(0, u.followersCount - 1),
           };
+          syncUserProfileToFirestore(updatedUser).catch(console.warn);
+          showToast(isFollowing ? `Following ${u.name}` : `Unfollowed ${u.name}`);
+          return updatedUser;
         }
         return u;
       })
@@ -637,6 +713,7 @@ function AppContent() {
         messages: [],
       };
       setChatThreads([newThread, ...chatThreads]);
+      syncChatThreadToFirestore(newThread).catch(console.warn);
     }
     navigateToTab('chat');
     openChatThread(user.id);
@@ -671,6 +748,7 @@ function AppContent() {
       messages: [],
     };
     setChatThreads((prev) => [newGroupThread, ...prev]);
+    syncChatThreadToFirestore(newGroupThread).catch(console.warn);
     navigateToTab('chat');
     openChatThread(newGroupThread.id);
   };
@@ -685,13 +763,15 @@ function AppContent() {
           const updatedMembers = updates.memberIds
             ? [currentUser, ...users.filter((u) => updates.memberIds?.includes(u.id))]
             : t.groupMembers;
-          return {
+          const updatedThread = {
             ...t,
             groupName: updates.name !== undefined ? updates.name : t.groupName,
             groupDescription: updates.description !== undefined ? updates.description : t.groupDescription,
             groupAvatar: updates.avatar !== undefined ? updates.avatar : t.groupAvatar,
             groupMembers: updatedMembers,
           };
+          syncChatThreadToFirestore(updatedThread).catch(console.warn);
+          return updatedThread;
         }
         return t;
       })
@@ -700,6 +780,7 @@ function AppContent() {
 
   const handleLeaveGroup = (groupId: string) => {
     setChatThreads((prev) => prev.filter((t) => t.id !== groupId));
+    deleteChatThreadFromFirestore(groupId).catch(console.warn);
     closeChatThread();
   };
 
@@ -1006,7 +1087,9 @@ function AppContent() {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
         if (thread.id === threadId || thread.participant?.id === threadId) {
-          return updateThreadAfterMessageDeletion(thread, messageId);
+          const updated = updateThreadAfterMessageDeletion(thread, messageId);
+          syncChatThreadToFirestore(updated).catch(console.warn);
+          return updated;
         }
         return thread;
       })
@@ -1028,11 +1111,13 @@ function AppContent() {
             }
             return m;
           });
-          return {
+          const updatedThread = {
             ...thread,
             unreadCount: 0,
             messages: updatedMessages,
           };
+          syncChatThreadToFirestore(updatedThread).catch(console.warn);
+          return updatedThread;
         }
         return thread;
       })
@@ -1127,10 +1212,12 @@ function AppContent() {
             return msg;
           });
 
-          return {
+          const updatedThread = {
             ...thread,
             messages: updatedMessages,
           };
+          syncChatThreadToFirestore(updatedThread).catch(console.warn);
+          return updatedThread;
         }
         return thread;
       })
@@ -1160,7 +1247,7 @@ function AppContent() {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
         if (thread.participant?.id === participantUserId || thread.id === participantUserId) {
-          return {
+          const updatedThread = {
             ...thread,
             messages: [],
             lastMessage: {
@@ -1171,6 +1258,8 @@ function AppContent() {
             },
             unreadCount: 0,
           };
+          syncChatThreadToFirestore(updatedThread).catch(console.warn);
+          return updatedThread;
         }
         return thread;
       })
@@ -1233,12 +1322,14 @@ function AppContent() {
             ? [currentUser, ...currentLikedBy.filter((u) => u.id !== currentUser.id)]
             : currentLikedBy.filter((u) => u.id !== currentUser.id);
 
-          return {
+          const updatedStory = {
             ...story,
             likesCount: nextCount,
             isLiked,
             likedBy: nextLikedBy,
           };
+          syncStoryToFirestore(updatedStory).catch(console.warn);
+          return updatedStory;
         }
         return story;
       })
@@ -1262,6 +1353,7 @@ function AppContent() {
         previewImage: targetStory.mediaUrl,
       };
       setNotifications((prev) => [notif, ...prev]);
+      syncNotificationToFirestore(notif).catch(console.warn);
     }
   };
 

@@ -142,43 +142,48 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-            {filteredUsers.map((user) => (
-              <motion.div
-                key={user.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -2 }}
-                className="neu-flat rounded-[20px] p-2.5 sm:p-3 flex flex-col justify-between items-center text-center transition-all hover:shadow-md border border-slate-100/50"
-              >
-                {/* Top Profile Area - Clickable to open Profile */}
-                <div
-                  className="w-full flex flex-col items-center cursor-pointer group"
-                  onClick={() => onUserSelect && onUserSelect(user)}
+            {filteredUsers.map((user) => {
+              const userAvatar =
+                user.avatar ||
+                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+              const userName = user.name || 'Funshann Member';
+              return (
+                <motion.div
+                  key={user.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{ y: -2 }}
+                  className="neu-flat rounded-[20px] p-2.5 sm:p-3 flex flex-col justify-between items-center text-center transition-all hover:shadow-md border border-slate-100/50"
                 >
-                  {/* Circular Avatar - Made slightly larger */}
-                  <div className="relative w-19 h-19 sm:w-20 sm:h-20 rounded-full neu-raised p-1 mb-2 mx-auto transition-transform group-hover:scale-105">
-                    <img
-                      src={user.avatar}
-                      alt={user.name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full rounded-full object-cover"
-                    />
-                    {user.isOnline && (
-                      <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-[#5B9DFF] ring-2 ring-white" />
-                    )}
-                  </div>
+                  {/* Top Profile Area - Clickable to open Profile */}
+                  <div
+                    className="w-full flex flex-col items-center cursor-pointer group"
+                    onClick={() => onUserSelect && onUserSelect(user)}
+                  >
+                    {/* Circular Avatar - Made slightly larger */}
+                    <div className="relative w-19 h-19 sm:w-20 sm:h-20 rounded-full neu-raised p-1 mb-2 mx-auto transition-transform group-hover:scale-105">
+                      <img
+                        src={userAvatar}
+                        alt={userName}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                      {user.isOnline && (
+                        <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-[#5B9DFF] ring-2 ring-white" />
+                      )}
+                    </div>
 
-                  {/* Display Name + Verified Badge */}
-                  <div className="flex items-center justify-center gap-1 w-full max-w-[130px] px-0.5">
-                    <span className="font-bold text-[13px] text-slate-800 truncate group-hover:text-[#5B9DFF] transition-colors">
-                      {user.name}
-                    </span>
-                    {user.isVerified && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#5B9DFF] fill-[#5B9DFF]/20 flex-shrink-0" />
-                    )}
+                    {/* Display Name + Verified Badge */}
+                    <div className="flex items-center justify-center gap-1 w-full max-w-[130px] px-0.5">
+                      <span className="font-bold text-[13px] text-slate-800 truncate group-hover:text-[#5B9DFF] transition-colors">
+                        {userName}
+                      </span>
+                      {user.isVerified && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#5B9DFF] fill-[#5B9DFF]/20 flex-shrink-0" />
+                      )}
+                    </div>
                   </div>
-                </div>
 
                 {/* Bottom Actions: Follow Button & Message Button */}
                 <div className="w-full pt-2.5 mt-2 flex items-center gap-1.5 border-t border-slate-100/60 dark:border-white/5">
@@ -220,8 +225,9 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
                   </motion.button>
                 </div>
               </motion.div>
-            ))}
-          </div>
+            );
+          })}
+        </div>
         )}
       </div>
     </div>

@@ -80,8 +80,26 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const currentUserId = currentUser?.id;
+  const postAuthor: User = post.user || {
+    id: post.userId || 'author_fallback',
+    name: 'Funshann Member',
+    username: 'user',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    postsCount: 0,
+    followersCount: 0,
+    followingCount: 0,
+  };
+
+  const authorAvatar =
+    postAuthor.avatar ||
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+  const myAvatar =
+    currentUser?.avatar ||
+    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
+  const postComments = Array.isArray(post.comments) ? post.comments : [];
+
   const isOwnPost = Boolean(
-    currentUserId && (post.userId === currentUserId || post.user?.id === currentUserId)
+    currentUserId && (post.userId === currentUserId || postAuthor.id === currentUserId)
   );
 
   // Sync isSaved when post prop updates
@@ -244,14 +262,14 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
             className="flex items-center gap-3 cursor-pointer group/user"
             onClick={(e) => {
               e.stopPropagation();
-              if (onUserClick) onUserClick(post.user);
+              if (onUserClick) onUserClick(postAuthor);
             }}
           >
             {/* Circular profile picture */}
             <div className="w-12 h-12 rounded-full p-[2px] bg-gradient-to-tr from-[#5B9DFF] to-blue-400 overflow-hidden flex-shrink-0 transition-transform group-hover/user:scale-105">
               <img
-                src={post.user.avatar}
-                alt={post.user.name}
+                src={authorAvatar}
+                alt={postAuthor.name}
                 loading="lazy"
                 decoding="async"
                 className="w-full h-full rounded-full object-cover border border-white"
@@ -262,14 +280,14 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-[15.5px] text-slate-900 tracking-tight group-hover/user:text-[#5B9DFF] transition-colors font-['Outfit']">
-                  {post.user.name}
+                  {postAuthor.name}
                 </span>
-                {post.user.isVerified && (
+                {postAuthor.isVerified && (
                   <CheckCircle2 className="w-4.5 h-4.5 text-[#5B9DFF] fill-[#5B9DFF]/20" />
                 )}
               </div>
               <div className="flex items-center gap-1.5 text-[13px] text-slate-500">
-                <span>@{post.user.username}</span>
+                <span>@{postAuthor.username}</span>
                 {post.location && (
                   <div className="relative inline-flex items-center">
                     <span className="text-slate-300 mr-1">•</span>
@@ -680,24 +698,24 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                   className="font-bold text-slate-900 mr-2 cursor-pointer hover:text-[#5B9DFF] transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (onUserClick) onUserClick(post.user);
+                    if (onUserClick) onUserClick(postAuthor);
                   }}
                 >
-                  {post.user.name}
+                  {postAuthor.name}
                 </span>
 
                 {isExpanded ? (
                   <span>{post.caption}</span>
                 ) : (
                   <span>
-                    {post.caption.length > 75
-                      ? `${post.caption.slice(0, 72)}...`
-                      : post.caption}
+                    {(post.caption || '').length > 75
+                      ? `${(post.caption || '').slice(0, 72)}...`
+                      : post.caption || ''}
                   </span>
                 )}
 
                 {/* Inline Read More */}
-                {!isExpanded && post.caption.length > 75 && (
+                {!isExpanded && (post.caption || '').length > 75 && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -712,7 +730,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
               </div>
 
               {/* View Comments Link */}
-              {post.comments && post.comments.length > 0 && (
+              {postComments.length > 0 && (
                 <div>
                   <button
                     type="button"
@@ -722,7 +740,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                     }}
                     className="text-[13px] font-semibold text-slate-400 hover:text-[#5B9DFF] transition-colors cursor-pointer"
                   >
-                    {t('feed_comments_view_all', { count: post.comments.length })}
+                    {t('feed_comments_view_all', { count: postComments.length })}
                   </button>
                 </div>
               )}
@@ -737,7 +755,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
           >
             <div className="w-8.5 h-8.5 rounded-full overflow-hidden flex-shrink-0 border border-slate-200 shadow-xs">
               <img
-                src={currentUser.avatar}
+                src={myAvatar}
                 alt="Me"
                 className="w-full h-full object-cover"
               />

@@ -7,6 +7,7 @@ import {
   ModerationActionType,
 } from '../types/safety';
 import { BlockedUserItem, User } from '../types';
+import { syncUserReportToFirestore } from './firebase';
 
 const STORAGE_UNIVERSAL_REPORTS = 'funshann_universal_reports';
 const STORAGE_MODERATION_LOGS = 'funshann_moderation_logs';
@@ -170,6 +171,7 @@ export const submitUniversalReport = (params: {
 
   const updated = [newReport, ...current];
   saveUniversalReports(updated);
+  syncUserReportToFirestore(newReport).catch(console.warn);
 
   return {
     success: true,

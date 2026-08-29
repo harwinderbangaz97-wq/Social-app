@@ -692,6 +692,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                   )}
 
                   <button
+                    id="send-otp-btn"
                     type="submit"
                     disabled={isSendingOtp || isVerifyingOtp}
                     className="w-full h-12 mt-2 bg-gradient-to-r from-[#3B82F6] via-[#2F7AF6] to-[#1D63ED] text-white font-bold rounded-xl text-sm shadow-[0_10px_20px_rgba(37,99,235,0.3)] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:brightness-105 disabled:opacity-75 disabled:cursor-not-allowed"

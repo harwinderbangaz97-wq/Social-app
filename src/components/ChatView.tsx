@@ -2298,28 +2298,43 @@ export const ChatView: React.FC<ChatViewProps> = ({
               Active Now
             </span>
             <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
-              {activeNowThreads.map((thread) => (
-                <button
-                  key={thread.id}
-                  type="button"
-                  onClick={() => onSelectThread((thread.isGroup ? thread.id : thread.participant?.id || ''))}
-                  className="flex flex-col items-center flex-shrink-0 group cursor-pointer select-none"
-                >
-                  <div className="relative w-13 h-13 rounded-full neu-raised p-0.5 transition-transform group-hover:scale-105">
-                    <img
-                      src={(thread.isGroup ? thread.groupAvatar || '' : thread.participant?.avatar || '')}
-                      alt={(thread.isGroup ? thread.groupName || '' : thread.participant?.name || '')}
-                      className="w-full h-full rounded-full object-cover"
-                    />
-                    {(thread.isGroup ? true : thread.participant?.isOnline) && (
-                      <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#5B9DFF] ring-2 ring-white" />
-                    )}
-                  </div>
-                  <span className="text-xs font-semibold text-slate-800 group-hover:text-[#5B9DFF] transition-colors mt-1.5 max-w-[58px] truncate text-center">
-                    {(thread.isGroup ? thread.groupName || '' : thread.participant?.name || '').split(' ')[0]}
-                  </span>
-                </button>
-              ))}
+              {activeNowThreads.map((thread) => {
+                const threadAvatar = thread.isGroup
+                  ? thread.groupAvatar ||
+                    'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80'
+                  : thread.participant?.avatar ||
+                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+                const threadName = thread.isGroup
+                  ? thread.groupName || 'Group'
+                  : thread.participant?.name || 'User';
+
+                return (
+                  <button
+                    key={thread.id}
+                    type="button"
+                    onClick={() =>
+                      onSelectThread(
+                        thread.isGroup ? thread.id : thread.participant?.id || ''
+                      )
+                    }
+                    className="flex flex-col items-center flex-shrink-0 group cursor-pointer select-none"
+                  >
+                    <div className="relative w-13 h-13 rounded-full neu-raised p-0.5 transition-transform group-hover:scale-105">
+                      <img
+                        src={threadAvatar}
+                        alt={threadName}
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                      {(thread.isGroup ? true : thread.participant?.isOnline) && (
+                        <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#5B9DFF] ring-2 ring-white" />
+                      )}
+                    </div>
+                    <span className="text-xs font-semibold text-slate-800 group-hover:text-[#5B9DFF] transition-colors mt-1.5 max-w-[58px] truncate text-center">
+                      {threadName.split(' ')[0]}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -2397,6 +2412,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
               const matchedHistoricalMsg = q
                 ? thread.messages?.find((m) => m.text?.toLowerCase().includes(q) || m.voiceNote?.transcript?.toLowerCase().includes(q))
                 : null;
+              const threadAvatar = thread.isGroup
+                ? thread.groupAvatar ||
+                  'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80'
+                : thread.participant?.avatar ||
+                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+              const threadName = thread.isGroup
+                ? thread.groupName || 'Group'
+                : thread.participant?.name || 'User';
+
               return (
                 <motion.div
                   key={thread.id}
@@ -2410,8 +2434,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   {/* Avatar */}
                   <div className="relative w-12 h-12 rounded-full neu-raised p-0.5 flex-shrink-0">
                     <img
-                      src={(thread.isGroup ? thread.groupAvatar || '' : thread.participant?.avatar || '')}
-                      alt={(thread.isGroup ? thread.groupName || '' : thread.participant?.name || '')}
+                      src={threadAvatar}
+                      alt={threadName}
                       className="w-full h-full rounded-full object-cover"
                     />
                     {(thread.isGroup ? true : thread.participant?.isOnline) && (
@@ -2429,7 +2453,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <div className="flex items-center justify-between mb-0.5">
                       <div className="flex items-center gap-1.5 truncate">
                         <h4 className="text-xs font-bold text-slate-800 truncate">
-                          {(thread.isGroup ? thread.groupName || '' : thread.participant?.name || '')}
+                          {threadName}
                         </h4>
                         {getIndividualChatSettings((thread.isGroup ? thread.id : thread.participant?.id || '')).isMuted && (
                           <span className="text-slate-400 flex-shrink-0" title="Muted chat">
@@ -2443,7 +2467,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         )}
                       </div>
                       <span className="text-[10px] text-slate-400 font-medium flex-shrink-0 ml-1">
-                        {thread.lastMessage.timestamp}
+                        {thread.lastMessage?.timestamp || ''}
                       </span>
                     </div>
                     <div
@@ -2466,18 +2490,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         </span>
                       ) : (
                         <>
-                          {thread.lastMessage.isOwn && <span>You: </span>}
-                          {thread.lastMessage.isVoice ? (
+                          {thread.lastMessage?.isOwn && <span>You: </span>}
+                          {thread.lastMessage?.isVoice ? (
                             <span className="flex items-center gap-1 text-[#5B9DFF] font-semibold">
                               <Mic className="w-3 h-3" />
                               <span>
                                 Voice note {thread.lastMessage.voiceDuration ? `(0:${thread.lastMessage.voiceDuration < 10 ? '0' : ''}${thread.lastMessage.voiceDuration})` : ''}
                               </span>
                             </span>
-                          ) : thread.lastMessage.imageUrl ? (
+                          ) : thread.lastMessage?.imageUrl ? (
                             <span>📷 Photo attachment</span>
                           ) : (
-                            <span>{thread.lastMessage.text}</span>
+                            <span>{thread.lastMessage?.text || ''}</span>
                           )}
                         </>
                       )}

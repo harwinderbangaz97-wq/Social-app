@@ -307,7 +307,7 @@ export const DeleteAccountSubPage: React.FC<DeleteAccountSubPageProps> = ({
 
             {/* Hint & Resend */}
             <div className="flex items-center justify-between text-xs pt-2">
-              <span className="text-slate-400 text-[11px]">Simulated demo code: 123456</span>
+              <span className="text-slate-400 text-[11px]">Security verification code required</span>
               {resendTimer > 0 ? (
                 <span className="text-slate-400 text-[11px]">Resend in {resendTimer}s</span>
               ) : (

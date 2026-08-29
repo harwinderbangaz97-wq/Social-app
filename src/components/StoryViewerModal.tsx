@@ -193,11 +193,25 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const likedByList =
     currentStory.likedBy && currentStory.likedBy.length > 0
       ? currentStory.likedBy
-      : liked
+      : liked && currentUser
       ? [currentUser]
       : [];
 
   const viewsCount = currentStory.viewsCount || Math.max(1, (likesCount || 0) * 3 + 4);
+
+  const storyUser: User = currentStory.user || {
+    id: currentStory.userId || 'story_user',
+    name: 'Story User',
+    username: 'user',
+    avatar:
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    postsCount: 0,
+    followersCount: 0,
+    followingCount: 0,
+  };
+  const storyUserAvatar =
+    storyUser.avatar ||
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
   return (
     <AnimatePresence>
@@ -315,7 +329,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               <div
                 onClick={() => {
                   if (onUserClick) {
-                    onUserClick(currentStory.user);
+                    onUserClick(storyUser);
                     onClose();
                   }
                 }}
@@ -323,17 +337,17 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               >
                 <div className="w-9 h-9 rounded-full ring-2 ring-[#5B9DFF] p-0.5 overflow-hidden bg-white shadow group-hover:scale-105 transition-transform">
                   <img
-                    src={currentStory.user.avatar}
-                    alt={currentStory.user.name}
+                    src={storyUserAvatar}
+                    alt={storyUser.name}
                     className="w-full h-full rounded-full object-cover"
                   />
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-semibold text-white tracking-wide group-hover:underline">
-                      {isAuthor ? 'Your Story' : currentStory.user.name}
+                      {isAuthor ? 'Your Story' : storyUser.name}
                     </span>
-                    {currentStory.user.isVerified && (
+                    {storyUser.isVerified && (
                       <CheckCircle2 className="w-3.5 h-3.5 text-[#5B9DFF] fill-white" />
                     )}
                   </div>
@@ -450,7 +464,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                     type="text"
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
-                    placeholder={t('story_reply_placeholder', { name: currentStory.user.name })}
+                    placeholder={t('story_reply_placeholder', { name: storyUser.name })}
                     className="w-full h-11 pl-4 pr-10 text-sm text-white placeholder-white/60 bg-white/20 backdrop-blur-lg rounded-full border border-white/20 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/60"
                   />
                   {replyText.trim() && (

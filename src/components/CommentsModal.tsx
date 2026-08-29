@@ -30,8 +30,23 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
 
   if (!isOpen || !post) return null;
 
-  const handleUserSelect = (user: User) => {
-    if (onUserClick) {
+  const postAuthor: User = post.user || {
+    id: post.userId || 'author_fallback',
+    name: 'Funshann Member',
+    username: 'user',
+    avatar:
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    postsCount: 0,
+    followersCount: 0,
+    followingCount: 0,
+  };
+  const commentsList = Array.isArray(post.comments) ? post.comments : [];
+  const currentAvatar =
+    currentUser?.avatar ||
+    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
+
+  const handleUserSelect = (user?: User) => {
+    if (user && onUserClick) {
       onUserClick(user);
     }
   };
@@ -67,7 +82,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                 Comments
               </h3>
               <span className="px-2.5 py-0.5 rounded-full bg-[#5B9DFF]/15 text-[#5B9DFF] text-xs font-bold">
-                {post.comments.length}
+                {commentsList.length}
               </span>
             </div>
             <motion.button
@@ -82,21 +97,21 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
           {/* Original Post mini summary */}
           <div className="py-3 px-1 flex items-start gap-3 border-b border-slate-100">
             <div
-              onClick={() => handleUserSelect(post.user)}
+              onClick={() => handleUserSelect(postAuthor)}
               className="w-9 h-9 rounded-full neu-raised p-0.5 flex-shrink-0 cursor-pointer hover:scale-105 transition"
             >
               <img
-                src={post.user.avatar}
-                alt={post.user.name}
+                src={postAuthor.avatar}
+                alt={postAuthor.name}
                 className="w-full h-full rounded-full object-cover"
               />
             </div>
             <div className="flex-1 text-xs">
               <span
-                onClick={() => handleUserSelect(post.user)}
+                onClick={() => handleUserSelect(postAuthor)}
                 className="font-bold text-slate-900 mr-1.5 cursor-pointer hover:text-[#5B9DFF] transition"
               >
-                {post.user.name}
+                {postAuthor.name}
               </span>
               <span className="text-slate-700">{post.caption}</span>
               <div className="text-[11px] text-slate-400 mt-1">{post.timestamp}</div>
@@ -105,12 +120,22 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
 
           {/* Comments List */}
           <div className="flex-1 overflow-y-auto no-scrollbar py-3 space-y-3.5">
-            {post.comments.length === 0 ? (
+            {commentsList.length === 0 ? (
               <div className="text-center py-10 text-slate-400 text-xs">
                 No comments yet. Be the first to share your thoughts!
               </div>
             ) : (
-              post.comments.map((comment) => {
+              commentsList.map((comment) => {
+                const commentUser: User = comment.user || {
+                  id: comment.userId || 'user',
+                  name: 'Member',
+                  username: 'user',
+                  avatar:
+                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+                  postsCount: 0,
+                  followersCount: 0,
+                  followingCount: 0,
+                };
                 const isCommentLiked = likedComments[comment.id] || comment.isLiked;
                 return (
                   <div
@@ -119,24 +144,24 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                   >
                     <div className="flex items-start gap-2.5 flex-1 min-w-0">
                       <div
-                        onClick={() => handleUserSelect(comment.user)}
+                        onClick={() => handleUserSelect(commentUser)}
                         className="w-8.5 h-8.5 rounded-full neu-raised p-0.5 flex-shrink-0 cursor-pointer hover:scale-105 transition"
                       >
                         <img
-                          src={comment.user.avatar}
-                          alt={comment.user.name}
+                          src={commentUser.avatar}
+                          alt={commentUser.name}
                           className="w-full h-full rounded-full object-cover"
                         />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span
-                            onClick={() => handleUserSelect(comment.user)}
+                            onClick={() => handleUserSelect(commentUser)}
                             className="text-xs font-bold text-slate-800 cursor-pointer hover:text-[#5B9DFF] transition"
                           >
-                            {comment.user.name}
+                            {commentUser.name}
                           </span>
-                          {comment.user.isVerified && (
+                          {commentUser.isVerified && (
                             <CheckCircle2 className="w-3.5 h-3.5 text-[#5B9DFF] fill-[#5B9DFF]/20" />
                           )}
                           <span className="text-[10px] text-slate-400 ml-1">
@@ -209,7 +234,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
               contentType="comment"
               contentId={selectedCommentForReport.id}
               targetUser={selectedCommentForReport.user}
-              reporterUserId={currentUser.id}
+              reporterUserId={currentUser?.id || 'anonymous'}
               snippet={selectedCommentForReport.text}
               postId={post.id}
               onClose={() => setSelectedCommentForReport(null)}
@@ -224,7 +249,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
           >
             <div className="w-9 h-9 rounded-full neu-raised overflow-hidden flex-shrink-0">
               <img
-                src={currentUser.avatar}
+                src={currentAvatar}
                 alt="Me"
                 className="w-full h-full object-cover"
               />

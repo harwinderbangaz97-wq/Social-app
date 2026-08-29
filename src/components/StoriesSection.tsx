@@ -18,8 +18,12 @@ const StoriesSectionComponent: React.FC<StoriesSectionProps> = ({
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const myAvatar =
+    currentUser?.avatar ||
+    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
+
   const currentUserStoryIndex = stories.findIndex(
-    (s) => s.userId === currentUser.id || s.user?.id === currentUser.id
+    (s) => s.userId === currentUser?.id || s.user?.id === currentUser?.id
   );
   const hasUserStory = currentUserStoryIndex !== -1;
 
@@ -51,7 +55,7 @@ const StoriesSectionComponent: React.FC<StoriesSectionProps> = ({
           >
             <div className="relative w-full h-full rounded-full overflow-hidden bg-white p-[2px]">
               <img
-                src={currentUser.avatar}
+                src={myAvatar}
                 alt="Your Story"
                 loading="lazy"
                 decoding="async"
@@ -80,9 +84,24 @@ const StoriesSectionComponent: React.FC<StoriesSectionProps> = ({
         {/* Stories from following users */}
         {stories.map((story, index) => {
           // If this is the current user's story, skip here since it's displayed as "Your Story"
-          if (story.userId === currentUser.id || story.user?.id === currentUser.id) {
+          if (story.userId === currentUser?.id || story.user?.id === currentUser?.id) {
             return null;
           }
+          const storyUser: User = story.user || {
+            id: story.userId || 'story_user',
+            name: 'Story User',
+            username: 'user',
+            avatar:
+              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+            postsCount: 0,
+            followersCount: 0,
+            followingCount: 0,
+          };
+          const storyAvatar =
+            storyUser.avatar ||
+            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+          const storyUsername = (storyUser.username || 'user').split('.')[0];
+
           return (
             <motion.div
               key={story.id}
@@ -101,8 +120,8 @@ const StoriesSectionComponent: React.FC<StoriesSectionProps> = ({
               >
                 <div className="w-full h-full rounded-full overflow-hidden bg-white p-[2px]">
                   <img
-                    src={story.user.avatar}
-                    alt={story.user.name}
+                    src={storyAvatar}
+                    alt={storyUser.name}
                     loading="lazy"
                     decoding="async"
                     className="w-full h-full rounded-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -112,7 +131,7 @@ const StoriesSectionComponent: React.FC<StoriesSectionProps> = ({
 
               {/* Small Username Below */}
               <span className="mt-2 text-[12.5px] font-semibold text-slate-600 max-w-[68px] truncate text-center group-hover:text-[#5B9DFF] transition-colors">
-                {story.user.username.split('.')[0]}
+                {storyUsername}
               </span>
             </motion.div>
           );

@@ -123,9 +123,20 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
   const selectedPreviewPost = navState.previewPost;
 
   const activeUser = currentUser || CURRENT_USER;
-  const displayedUser = profileUser || activeUser;
+  const displayedUser: User = profileUser || activeUser || {
+    id: 'user_fallback',
+    name: 'Funshann Member',
+    username: 'user',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    postsCount: 0,
+    followersCount: 0,
+    followingCount: 0,
+  };
   const isOwnProfile = Boolean(displayedUser?.id && activeUser?.id && displayedUser.id === activeUser.id);
   const isUserLocked = lockedChatUserIds.includes(displayedUser.id);
+  const userAvatar =
+    displayedUser.avatar ||
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
   const displayPosts = isOwnProfile
     ? activeSubTab === 'posts'
@@ -198,8 +209,8 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
           {/* Raised 3D Circular Avatar - Clearly larger & visually balanced */}
           <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full neu-raised p-1.5 shrink-0 self-start sm:self-center">
             <img
-              src={displayedUser.avatar}
-              alt={displayedUser.name}
+              src={userAvatar}
+              alt={displayedUser.name || 'User'}
               loading="lazy"
               decoding="async"
               className="w-full h-full rounded-full object-cover shadow-xs"

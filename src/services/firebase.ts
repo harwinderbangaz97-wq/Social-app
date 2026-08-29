@@ -17,9 +17,14 @@ import {
   setDoc,
   getDoc,
   getDocs,
+  deleteDoc,
+  updateDoc,
   query,
   limit,
+  orderBy,
+  onSnapshot,
   serverTimestamp,
+  Unsubscribe,
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -31,6 +36,7 @@ import {
 } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { User, Post, Story, ChatThread, Message, NotificationItem, UserReportItem, BugReportItem } from '../types';
+import { UniversalReportItem } from '../types/safety';
 
 // Initialize Firebase App instance safely
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -117,24 +123,11 @@ export const formatPhoneNumber = (rawPhone: string): string => {
   return `+${cleaned}`;
 };
 
-// Singleton RecaptchaVerifier and Widget ID references
-let globalRecaptchaVerifier: RecaptchaVerifier | null = null;
-let globalRecaptchaWidgetId: number | null = null;
-
+// Singleton RecaptchaVerifier reference on window / module
 /**
  * Safely clears any active RecaptchaVerifier instance and cleans up the container DOM element
  */
 export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-container'): void => {
-  if (globalRecaptchaVerifier) {
-    try {
-      globalRecaptchaVerifier.clear();
-    } catch (e) {
-      console.warn('Error clearing globalRecaptchaVerifier:', e);
-    }
-    globalRecaptchaVerifier = null;
-    globalRecaptchaWidgetId = null;
-  }
-
   const windowObj = typeof window !== 'undefined' ? (window as any) : null;
   if (windowObj && windowObj.recaptchaVerifier) {
     try {
@@ -143,6 +136,7 @@ export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-containe
       console.warn('Error clearing window.recaptchaVerifier:', e);
     }
     windowObj.recaptchaVerifier = null;
+    windowObj.recaptchaWidgetId = undefined;
   }
 
   if (typeof document !== 'undefined') {
@@ -154,23 +148,27 @@ export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-containe
 };
 
 /**
- * Retrieves the existing active RecaptchaVerifier or safely initializes exactly ONE instance.
+ * Initializes or re-uses the invisible RecaptchaVerifier instance following the Singleton/Cleanup pattern.
+ * Before creating a new RecaptchaVerifier instance, checks if window.recaptchaVerifier already exists.
+ * If it exists, calls .clear() on it and sets it to null before re-initializing.
  */
-export const getOrCreateRecaptchaVerifier = async (
+export const initRecaptchaVerifier = (
   containerId: string = 'recaptcha-container'
-): Promise<RecaptchaVerifier> => {
-  // Reuse existing valid instance if already active
-  if (globalRecaptchaVerifier) {
-    return globalRecaptchaVerifier;
-  }
-
+): RecaptchaVerifier => {
   const windowObj = typeof window !== 'undefined' ? (window as any) : null;
+
+  // 1. Check if window.recaptchaVerifier already exists, call .clear() and set to null before re-initializing
   if (windowObj && windowObj.recaptchaVerifier) {
-    globalRecaptchaVerifier = windowObj.recaptchaVerifier;
-    return globalRecaptchaVerifier;
+    try {
+      windowObj.recaptchaVerifier.clear();
+    } catch (e) {
+      console.warn('Error clearing existing window.recaptchaVerifier:', e);
+    }
+    windowObj.recaptchaVerifier = null;
+    windowObj.recaptchaWidgetId = undefined;
   }
 
-  // Ensure DOM container exists and is clean
+  // 2. Ensure container DOM element exists and is empty
   if (typeof document !== 'undefined') {
     let container = document.getElementById(containerId);
     if (!container) {
@@ -181,16 +179,21 @@ export const getOrCreateRecaptchaVerifier = async (
       container.innerHTML = '';
     }
 
-    const verifier = new RecaptchaVerifier(auth, container, {
+    // 3. Create invisible RecaptchaVerifier bound to container
+    const verifier = new RecaptchaVerifier(auth, containerId, {
       size: 'invisible',
       callback: () => {
-        // reCAPTCHA verification passed
+        // reCAPTCHA solved
       },
       'expired-callback': () => {
-        console.warn('reCAPTCHA expired, resetting widget for retry');
-        if (typeof window !== 'undefined' && (window as any).grecaptcha && globalRecaptchaWidgetId !== null) {
+        console.warn('reCAPTCHA expired, automatically resetting widget');
+        if (typeof window !== 'undefined' && (window as any).grecaptcha) {
           try {
-            (window as any).grecaptcha.reset(globalRecaptchaWidgetId);
+            if (windowObj && windowObj.recaptchaWidgetId !== undefined) {
+              (window as any).grecaptcha.reset(windowObj.recaptchaWidgetId);
+            } else {
+              (window as any).grecaptcha.reset();
+            }
           } catch (e) {
             console.warn('Error resetting reCAPTCHA on expiry:', e);
           }
@@ -198,13 +201,6 @@ export const getOrCreateRecaptchaVerifier = async (
       },
     });
 
-    try {
-      globalRecaptchaWidgetId = await verifier.render();
-    } catch (renderErr) {
-      console.warn('RecaptchaVerifier.render() initial warning:', renderErr);
-    }
-
-    globalRecaptchaVerifier = verifier;
     if (windowObj) {
       windowObj.recaptchaVerifier = verifier;
     }
@@ -215,8 +211,9 @@ export const getOrCreateRecaptchaVerifier = async (
   throw new Error('DOM environment not available for reCAPTCHA initialization.');
 };
 
-// Backwards compatibility alias
-export const setupRecaptchaVerifier = getOrCreateRecaptchaVerifier;
+// Aliases for compatibility
+export const getOrCreateRecaptchaVerifier = initRecaptchaVerifier;
+export const setupRecaptchaVerifier = initRecaptchaVerifier;
 
 export interface PhoneAuthSendResult {
   success: boolean;
@@ -240,7 +237,15 @@ export const sendFirebasePhoneOtp = async (
   }
 
   try {
-    const verifier = await getOrCreateRecaptchaVerifier(containerId);
+    const windowObj = typeof window !== 'undefined' ? (window as any) : null;
+    
+    // Ensure clean/active verifier instance
+    let verifier = windowObj?.recaptchaVerifier;
+    if (!verifier) {
+      verifier = initRecaptchaVerifier(containerId);
+    }
+
+    // Wrap signInWithPhoneNumber inside try-catch block
     const confirmationResult = await signInWithPhoneNumber(auth, formatted, verifier);
 
     return {
@@ -255,12 +260,17 @@ export const sendFirebasePhoneOtp = async (
       customData: error?.customData,
     });
 
-    // Reset reCAPTCHA widget safely so the user can immediately retry without re-creating conflicting widgets
-    if (typeof window !== 'undefined' && (window as any).grecaptcha && globalRecaptchaWidgetId !== null) {
+    // Auto-Reset: On any error or failed verification, automatically reset reCAPTCHA widget (grecaptcha.reset())
+    const windowObj = typeof window !== 'undefined' ? (window as any) : null;
+    if (windowObj && (window as any).grecaptcha) {
       try {
-        (window as any).grecaptcha.reset(globalRecaptchaWidgetId);
+        if (windowObj.recaptchaWidgetId !== undefined) {
+          (window as any).grecaptcha.reset(windowObj.recaptchaWidgetId);
+        } else {
+          (window as any).grecaptcha.reset();
+        }
       } catch (resetErr) {
-        console.warn('Error resetting grecaptcha, clearing verifier:', resetErr);
+        console.warn('grecaptcha.reset error, clearing verifier for fresh retry:', resetErr);
         clearRecaptchaVerifier(containerId);
       }
     } else {
@@ -497,7 +507,161 @@ export const uploadChatMediaToStorage = async (
 // Firestore Data Sync & Persistence Helpers
 // ==========================================
 
-// 1. User Profiles
+export const DEFAULT_AVATAR =
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+
+export const normalizeUser = (u: any): User => {
+  if (!u || typeof u !== 'object') {
+    return {
+      id: 'user_fallback',
+      name: 'Funshann Member',
+      username: 'user',
+      avatar: DEFAULT_AVATAR,
+      postsCount: 0,
+      followersCount: 0,
+      followingCount: 0,
+    };
+  }
+  return {
+    id: u.id || u.userId || 'user',
+    name: u.name || u.displayName || 'Funshann Member',
+    username: u.username || 'user',
+    avatar: u.avatar || u.photoURL || DEFAULT_AVATAR,
+    bio: u.bio || '',
+    location: u.location || '',
+    website: u.website || '',
+    interests: Array.isArray(u.interests) ? u.interests : [],
+    socialLinks: Array.isArray(u.socialLinks) ? u.socialLinks : [],
+    birthday: u.birthday || '',
+    mobileNumber: u.mobileNumber || '',
+    email: u.email || '',
+    postsCount: typeof u.postsCount === 'number' ? u.postsCount : 0,
+    followersCount: typeof u.followersCount === 'number' ? u.followersCount : 0,
+    followingCount: typeof u.followingCount === 'number' ? u.followingCount : 0,
+    isVerified: Boolean(u.isVerified),
+    isFollowing: Boolean(u.isFollowing),
+    isOnline: Boolean(u.isOnline),
+  };
+};
+
+export const normalizePost = (raw: any): Post => {
+  const user = normalizeUser(
+    raw?.user || {
+      id: raw?.userId || raw?.authorId,
+      name: raw?.userName || raw?.authorName,
+      username: raw?.username || raw?.authorUsername,
+      avatar: raw?.userAvatar || raw?.authorAvatar,
+    }
+  );
+
+  const comments = Array.isArray(raw?.comments)
+    ? raw.comments.map((c: any) => ({
+        id: c?.id || String(Date.now()),
+        userId: c?.userId || 'user',
+        user: normalizeUser(c?.user || { id: c?.userId }),
+        text: c?.text || '',
+        timestamp: c?.timestamp || 'Just now',
+        likesCount: typeof c?.likesCount === 'number' ? c.likesCount : 0,
+        isLiked: Boolean(c?.isLiked),
+      }))
+    : [];
+
+  return {
+    id: raw?.id || String(Date.now()),
+    userId: raw?.userId || user.id,
+    user,
+    imageUrl: raw?.imageUrl || raw?.mediaUrl || '',
+    caption: raw?.caption || '',
+    timestamp: raw?.timestamp || 'Just now',
+    likesCount: typeof raw?.likesCount === 'number' ? raw.likesCount : 0,
+    dislikesCount: typeof raw?.dislikesCount === 'number' ? raw.dislikesCount : 0,
+    commentsCount:
+      typeof raw?.commentsCount === 'number'
+        ? raw.commentsCount
+        : comments.length,
+    isLiked: Boolean(raw?.isLiked),
+    isDisliked: Boolean(raw?.isDisliked),
+    userReaction: raw?.userReaction || null,
+    isSaved: Boolean(raw?.isSaved),
+    isAutoRemoved: Boolean(raw?.isAutoRemoved),
+    comments,
+    location: raw?.location || '',
+  };
+};
+
+export const normalizeStory = (raw: any): Story => {
+  const user = normalizeUser(raw?.user || { id: raw?.userId });
+  return {
+    id: raw?.id || String(Date.now()),
+    userId: raw?.userId || user.id,
+    user,
+    mediaUrl: raw?.mediaUrl || raw?.imageUrl || '',
+    timestamp: raw?.timestamp || 'Just now',
+    isSeen: Boolean(raw?.isSeen),
+    caption: raw?.caption || '',
+    likesCount: typeof raw?.likesCount === 'number' ? raw.likesCount : 0,
+    isLiked: Boolean(raw?.isLiked),
+    likedBy: Array.isArray(raw?.likedBy) ? raw.likedBy.map(normalizeUser) : [],
+    viewsCount: typeof raw?.viewsCount === 'number' ? raw.viewsCount : 0,
+  };
+};
+
+export const normalizeChatThread = (raw: any): ChatThread => {
+  const isGroup = Boolean(raw?.isGroup);
+  const participant = raw?.participant ? normalizeUser(raw.participant) : undefined;
+  const groupMembers = Array.isArray(raw?.groupMembers)
+    ? raw.groupMembers.map(normalizeUser)
+    : [];
+  const messages = Array.isArray(raw?.messages) ? raw.messages : [];
+
+  return {
+    id: raw?.id || String(Date.now()),
+    participant,
+    isGroup,
+    groupName: raw?.groupName,
+    groupAvatar: raw?.groupAvatar,
+    groupDescription: raw?.groupDescription,
+    groupMembers,
+    lastMessage:
+      raw?.lastMessage ||
+      (messages.length > 0
+        ? {
+            text: messages[messages.length - 1].text || '',
+            imageUrl: messages[messages.length - 1].imageUrl,
+            isVoice: Boolean(messages[messages.length - 1].voiceNote),
+            timestamp: messages[messages.length - 1].timestamp || 'Just now',
+            isRead: Boolean(messages[messages.length - 1].isRead),
+            isOwn: false,
+          }
+        : {
+            text: '',
+            timestamp: 'Just now',
+            isRead: true,
+            isOwn: false,
+          }),
+    unreadCount: typeof raw?.unreadCount === 'number' ? raw.unreadCount : 0,
+    messages,
+  };
+};
+
+export const normalizeNotification = (raw: any): NotificationItem => {
+  const user = normalizeUser(raw?.user);
+  return {
+    id: raw?.id || String(Date.now()),
+    user,
+    type: raw?.type || 'like',
+    text: raw?.text || raw?.content || '',
+    timestamp: raw?.timestamp || 'Just now',
+    read: typeof raw?.read === 'boolean' ? raw.read : Boolean(raw?.isRead),
+    postId: raw?.postId,
+    previewImage: raw?.previewImage,
+    chatUserId: raw?.chatUserId,
+    commentId: raw?.commentId,
+    targetUserId: raw?.targetUserId,
+  };
+};
+
+// 1. User Profiles & User Directory
 export const syncUserProfileToFirestore = async (user: Partial<User>): Promise<void> => {
   try {
     await ensureFirebaseAuth();
@@ -519,12 +683,39 @@ export const getUserProfileFromFirestore = async (userId: string): Promise<User 
     const userRef = doc(db, 'users', userId);
     const snap = await getDoc(userRef);
     if (snap.exists()) {
-      return snap.data() as User;
+      return normalizeUser(snap.data());
     }
     return null;
   } catch (error) {
     console.warn('Firestore read user profile fallback:', error);
     return null;
+  }
+};
+
+export const subscribeToUsers = (callback: (users: User[]) => void): (() => void) => {
+  try {
+    const usersRef = collection(db, 'users');
+    const unsubscribe = onSnapshot(
+      usersRef,
+      (snapshot) => {
+        const result: User[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            result.push(normalizeUser(docSnap.data()));
+          }
+        });
+        if (result.length > 0) {
+          callback(result);
+        }
+      },
+      (error) => {
+        console.warn('Users real-time listener warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to users:', err);
+    return () => {};
   }
 };
 
@@ -543,22 +734,74 @@ export const syncPostToFirestore = async (post: Post): Promise<void> => {
   }
 };
 
+export const deletePostFromFirestore = async (postId: string): Promise<void> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!postId) return;
+    const postRef = doc(db, 'posts', postId);
+    await deleteDoc(postRef);
+  } catch (error) {
+    console.warn('Firestore delete post fallback:', error);
+  }
+};
+
+export const updatePostInFirestore = async (postId: string, updates: Partial<Post>): Promise<void> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!postId) return;
+    const postRef = doc(db, 'posts', postId);
+    await setDoc(postRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.warn('Firestore update post fallback:', error);
+  }
+};
+
 export const getPostsFromFirestore = async (): Promise<Post[]> => {
   try {
     await ensureFirebaseAuth();
     const postsRef = collection(db, 'posts');
-    const q = query(postsRef, limit(50));
+    const q = query(postsRef, limit(100));
     const querySnapshot = await getDocs(q);
     const result: Post[] = [];
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
-        result.push(docSnap.data() as Post);
+        result.push(normalizePost(docSnap.data()));
       }
     });
     return result;
   } catch (error) {
     console.warn('Firestore getPosts fallback:', error);
     return [];
+  }
+};
+
+export const subscribeToPosts = (callback: (posts: Post[]) => void): (() => void) => {
+  try {
+    const postsRef = collection(db, 'posts');
+    const unsubscribe = onSnapshot(
+      postsRef,
+      (snapshot) => {
+        const result: Post[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            result.push(normalizePost(docSnap.data()));
+          }
+        });
+        if (result.length > 0) {
+          callback(result);
+        }
+      },
+      (error) => {
+        console.warn('Posts real-time listener warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to posts:', err);
+    return () => {};
   }
 };
 
@@ -574,6 +817,17 @@ export const syncChatThreadToFirestore = async (thread: ChatThread): Promise<voi
     }, { merge: true });
   } catch (error) {
     console.warn('Firestore chat thread sync fallback to local:', error);
+  }
+};
+
+export const deleteChatThreadFromFirestore = async (threadId: string): Promise<void> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!threadId) return;
+    const threadRef = doc(db, 'chat_threads', threadId);
+    await deleteDoc(threadRef);
+  } catch (error) {
+    console.warn('Firestore delete chat thread fallback:', error);
   }
 };
 
@@ -595,18 +849,45 @@ export const getChatThreadsFromFirestore = async (): Promise<ChatThread[]> => {
   try {
     await ensureFirebaseAuth();
     const threadsRef = collection(db, 'chat_threads');
-    const q = query(threadsRef, limit(50));
+    const q = query(threadsRef, limit(100));
     const querySnapshot = await getDocs(q);
     const result: ChatThread[] = [];
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
-        result.push(docSnap.data() as ChatThread);
+        result.push(normalizeChatThread(docSnap.data()));
       }
     });
     return result;
   } catch (error) {
     console.warn('Firestore getChatThreads fallback:', error);
     return [];
+  }
+};
+
+export const subscribeToChatThreads = (callback: (threads: ChatThread[]) => void): (() => void) => {
+  try {
+    const threadsRef = collection(db, 'chat_threads');
+    const unsubscribe = onSnapshot(
+      threadsRef,
+      (snapshot) => {
+        const result: ChatThread[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            result.push(normalizeChatThread(docSnap.data()));
+          }
+        });
+        if (result.length > 0) {
+          callback(result);
+        }
+      },
+      (error) => {
+        console.warn('Chat threads real-time listener warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to chat threads:', err);
+    return () => {};
   }
 };
 
@@ -625,22 +906,60 @@ export const syncStoryToFirestore = async (story: Story): Promise<void> => {
   }
 };
 
+export const deleteStoryFromFirestore = async (storyId: string): Promise<void> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!storyId) return;
+    const storyRef = doc(db, 'stories', storyId);
+    await deleteDoc(storyRef);
+  } catch (error) {
+    console.warn('Firestore delete story fallback:', error);
+  }
+};
+
 export const getStoriesFromFirestore = async (): Promise<Story[]> => {
   try {
     await ensureFirebaseAuth();
     const storiesRef = collection(db, 'stories');
-    const q = query(storiesRef, limit(30));
+    const q = query(storiesRef, limit(50));
     const querySnapshot = await getDocs(q);
     const result: Story[] = [];
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
-        result.push(docSnap.data() as Story);
+        result.push(normalizeStory(docSnap.data()));
       }
     });
     return result;
   } catch (error) {
     console.warn('Firestore getStories fallback:', error);
     return [];
+  }
+};
+
+export const subscribeToStories = (callback: (stories: Story[]) => void): (() => void) => {
+  try {
+    const storiesRef = collection(db, 'stories');
+    const unsubscribe = onSnapshot(
+      storiesRef,
+      (snapshot) => {
+        const result: Story[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            result.push(normalizeStory(docSnap.data()));
+          }
+        });
+        if (result.length > 0) {
+          callback(result);
+        }
+      },
+      (error) => {
+        console.warn('Stories real-time listener warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to stories:', err);
+    return () => {};
   }
 };
 
@@ -678,12 +997,12 @@ export const getNotificationsFromFirestore = async (): Promise<NotificationItem[
   try {
     await ensureFirebaseAuth();
     const notifsRef = collection(db, 'notifications');
-    const q = query(notifsRef, limit(40));
+    const q = query(notifsRef, limit(50));
     const querySnapshot = await getDocs(q);
     const result: NotificationItem[] = [];
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
-        result.push(docSnap.data() as NotificationItem);
+        result.push(normalizeNotification(docSnap.data()));
       }
     });
     return result;
@@ -693,8 +1012,35 @@ export const getNotificationsFromFirestore = async (): Promise<NotificationItem[
   }
 };
 
+export const subscribeToNotifications = (callback: (notifications: NotificationItem[]) => void): (() => void) => {
+  try {
+    const notifsRef = collection(db, 'notifications');
+    const unsubscribe = onSnapshot(
+      notifsRef,
+      (snapshot) => {
+        const result: NotificationItem[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            result.push(normalizeNotification(docSnap.data()));
+          }
+        });
+        if (result.length > 0) {
+          callback(result);
+        }
+      },
+      (error) => {
+        console.warn('Notifications real-time listener warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to notifications:', err);
+    return () => {};
+  }
+};
+
 // 7. User Reports & Grievances
-export const syncUserReportToFirestore = async (report: UserReportItem): Promise<void> => {
+export const syncUserReportToFirestore = async (report: UserReportItem | UniversalReportItem | Record<string, any>): Promise<void> => {
   try {
     await ensureFirebaseAuth();
     if (!report || !report.id) return;
