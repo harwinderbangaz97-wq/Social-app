@@ -959,9 +959,6 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Invisible Firebase Phone Auth reCAPTCHA container */}
-      <div id="recaptcha-container" />
     </div>
   );
 };

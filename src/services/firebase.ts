@@ -93,7 +93,8 @@ export type { ConfirmationResult };
  * Standardizes international and Indian mobile phone numbers into E.164 format (+91XXXXXXXXXX)
  */
 export const formatPhoneNumber = (rawPhone: string): string => {
-  const cleaned = rawPhone.trim().replace(/[\s\-()]/g, '');
+  if (!rawPhone) return '';
+  const cleaned = rawPhone.trim().replace(/[\s\-\(\)\.]/g, '');
   if (cleaned.startsWith('+')) {
     return cleaned;
   }
@@ -109,17 +110,21 @@ export const formatPhoneNumber = (rawPhone: string): string => {
   if (cleaned.startsWith('91') && cleaned.length === 12) {
     return `+${cleaned}`;
   }
+  // Fallback if all digits
+  if (/^\d+$/.test(cleaned)) {
+    return `+${cleaned}`;
+  }
   return `+${cleaned}`;
 };
 
-// Singleton RecaptchaVerifier reference to prevent duplicate widgets on the same container
+// Singleton RecaptchaVerifier and Widget ID references
 let globalRecaptchaVerifier: RecaptchaVerifier | null = null;
+let globalRecaptchaWidgetId: number | null = null;
 
 /**
  * Safely clears any active RecaptchaVerifier instance and cleans up the container DOM element
  */
 export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-container'): void => {
-  const windowObj = typeof window !== 'undefined' ? (window as any) : null;
   if (globalRecaptchaVerifier) {
     try {
       globalRecaptchaVerifier.clear();
@@ -127,7 +132,10 @@ export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-containe
       console.warn('Error clearing globalRecaptchaVerifier:', e);
     }
     globalRecaptchaVerifier = null;
+    globalRecaptchaWidgetId = null;
   }
+
+  const windowObj = typeof window !== 'undefined' ? (window as any) : null;
   if (windowObj && windowObj.recaptchaVerifier) {
     try {
       windowObj.recaptchaVerifier.clear();
@@ -136,6 +144,7 @@ export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-containe
     }
     windowObj.recaptchaVerifier = null;
   }
+
   if (typeof document !== 'undefined') {
     const container = document.getElementById(containerId);
     if (container) {
@@ -147,21 +156,21 @@ export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-containe
 /**
  * Retrieves the existing active RecaptchaVerifier or safely initializes exactly ONE instance.
  */
-export const getOrCreateRecaptchaVerifier = (
+export const getOrCreateRecaptchaVerifier = async (
   containerId: string = 'recaptcha-container'
-): RecaptchaVerifier => {
-  const windowObj = typeof window !== 'undefined' ? (window as any) : null;
-
+): Promise<RecaptchaVerifier> => {
   // Reuse existing valid instance if already active
   if (globalRecaptchaVerifier) {
     return globalRecaptchaVerifier;
   }
+
+  const windowObj = typeof window !== 'undefined' ? (window as any) : null;
   if (windowObj && windowObj.recaptchaVerifier) {
     globalRecaptchaVerifier = windowObj.recaptchaVerifier;
     return globalRecaptchaVerifier;
   }
 
-  // Ensure DOM container is ready and free of stale child elements
+  // Ensure DOM container exists and is clean
   if (typeof document !== 'undefined') {
     let container = document.getElementById(containerId);
     if (!container) {
@@ -171,25 +180,39 @@ export const getOrCreateRecaptchaVerifier = (
     } else {
       container.innerHTML = '';
     }
+
+    const verifier = new RecaptchaVerifier(auth, container, {
+      size: 'invisible',
+      callback: () => {
+        // reCAPTCHA verification passed
+      },
+      'expired-callback': () => {
+        console.warn('reCAPTCHA expired, resetting widget for retry');
+        if (typeof window !== 'undefined' && (window as any).grecaptcha && globalRecaptchaWidgetId !== null) {
+          try {
+            (window as any).grecaptcha.reset(globalRecaptchaWidgetId);
+          } catch (e) {
+            console.warn('Error resetting reCAPTCHA on expiry:', e);
+          }
+        }
+      },
+    });
+
+    try {
+      globalRecaptchaWidgetId = await verifier.render();
+    } catch (renderErr) {
+      console.warn('RecaptchaVerifier.render() initial warning:', renderErr);
+    }
+
+    globalRecaptchaVerifier = verifier;
+    if (windowObj) {
+      windowObj.recaptchaVerifier = verifier;
+    }
+
+    return verifier;
   }
 
-  const verifier = new RecaptchaVerifier(auth, containerId, {
-    size: 'invisible',
-    callback: () => {
-      // reCAPTCHA verification passed
-    },
-    'expired-callback': () => {
-      console.warn('reCAPTCHA expired, clearing verifier');
-      clearRecaptchaVerifier(containerId);
-    },
-  });
-
-  globalRecaptchaVerifier = verifier;
-  if (windowObj) {
-    windowObj.recaptchaVerifier = verifier;
-  }
-
-  return verifier;
+  throw new Error('DOM environment not available for reCAPTCHA initialization.');
 };
 
 // Backwards compatibility alias
@@ -208,55 +231,39 @@ export const sendFirebasePhoneOtp = async (
   rawPhoneNumber: string,
   containerId: string = 'recaptcha-container'
 ): Promise<PhoneAuthSendResult> => {
+  const formatted = formatPhoneNumber(rawPhoneNumber);
+  if (!formatted || formatted.length < 8) {
+    return {
+      success: false,
+      error: 'Please enter a valid mobile number with country code.',
+    };
+  }
+
   try {
-    const formatted = formatPhoneNumber(rawPhoneNumber);
-    if (!formatted || formatted.length < 8) {
-      return {
-        success: false,
-        error: 'Please enter a valid mobile number with country code.',
-      };
-    }
-
-    let verifier: RecaptchaVerifier;
-    try {
-      verifier = getOrCreateRecaptchaVerifier(containerId);
-    } catch (vErr: any) {
-      console.warn('Failed to get existing verifier, creating fresh one:', vErr);
-      clearRecaptchaVerifier(containerId);
-      verifier = getOrCreateRecaptchaVerifier(containerId);
-    }
-
-    let confirmationResult: ConfirmationResult;
-    try {
-      confirmationResult = await signInWithPhoneNumber(auth, formatted, verifier);
-    } catch (sendErr: any) {
-      // If error is captcha related or already rendered, reset and retry once with fresh verifier
-      if (
-        sendErr?.code === 'auth/captcha-check-failed' ||
-        sendErr?.message?.includes('already been rendered') ||
-        sendErr?.message?.includes('reCAPTCHA')
-      ) {
-        console.warn('reCAPTCHA error encountered during signInWithPhoneNumber, resetting and retrying once:', sendErr);
-        clearRecaptchaVerifier(containerId);
-        const freshVerifier = getOrCreateRecaptchaVerifier(containerId);
-        confirmationResult = await signInWithPhoneNumber(auth, formatted, freshVerifier);
-      } else {
-        throw sendErr;
-      }
-    }
+    const verifier = await getOrCreateRecaptchaVerifier(containerId);
+    const confirmationResult = await signInWithPhoneNumber(auth, formatted, verifier);
 
     return {
       success: true,
       confirmationResult,
     };
   } catch (error: any) {
-    console.error('Firebase sendPhoneOtp error details:', error);
-    // If captcha error, clean up so next attempt is fresh
-    if (
-      error?.code === 'auth/captcha-check-failed' ||
-      error?.message?.includes('already been rendered') ||
-      error?.message?.includes('reCAPTCHA')
-    ) {
+    console.error('Firebase signInWithPhoneNumber detailed error:', {
+      name: error?.name,
+      code: error?.code,
+      message: error?.message,
+      customData: error?.customData,
+    });
+
+    // Reset reCAPTCHA widget safely so the user can immediately retry without re-creating conflicting widgets
+    if (typeof window !== 'undefined' && (window as any).grecaptcha && globalRecaptchaWidgetId !== null) {
+      try {
+        (window as any).grecaptcha.reset(globalRecaptchaWidgetId);
+      } catch (resetErr) {
+        console.warn('Error resetting grecaptcha, clearing verifier:', resetErr);
+        clearRecaptchaVerifier(containerId);
+      }
+    } else {
       clearRecaptchaVerifier(containerId);
     }
 
@@ -267,6 +274,8 @@ export const sendFirebasePhoneOtp = async (
       message = 'SMS quota or rate limit reached. Please wait a moment before trying again.';
     } else if (error?.code === 'auth/captcha-check-failed') {
       message = 'reCAPTCHA check failed. Please try sending the SMS code again.';
+    } else if (error?.code === 'auth/invalid-app-credential') {
+      message = 'Authentication credential error. Please try sending the SMS code again.';
     } else if (error?.code === 'auth/operation-not-allowed' || error?.code === 'auth/admin-restricted-operation') {
       message = 'Phone Authentication must be enabled under Firebase Console > Authentication > Sign-in method.';
     } else if (error?.message) {
@@ -310,12 +319,18 @@ export const verifyFirebasePhoneOtp = async (
     }
 
     const userCredential = await confirmationResult.confirm(trimmedCode);
+    clearRecaptchaVerifier();
     return {
       success: true,
       user: userCredential.user,
     };
   } catch (error: any) {
-    console.error('Firebase verifyPhoneOtp error details:', error);
+    console.error('Firebase verifyPhoneOtp detailed error:', {
+      name: error?.name,
+      code: error?.code,
+      message: error?.message,
+      customData: error?.customData,
+    });
     let message = 'Verification failed. Please check the code and try again.';
     if (error?.code === 'auth/invalid-verification-code') {
       message = 'Incorrect SMS verification code. Please check your SMS and try again.';
