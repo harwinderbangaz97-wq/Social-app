@@ -29,6 +29,7 @@ import {
   ConfirmationResult,
   syncUserProfileToFirestore,
   getUserProfileFromFirestore,
+  clearRecaptchaVerifier,
 } from '../services/firebase';
 
 interface WelcomeAuthScreenProps {
@@ -77,6 +78,13 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
     }
     return () => clearTimeout(timer);
   }, [resendCooldown]);
+
+  // Clean up any active reCAPTCHA verifiers when unmounting
+  useEffect(() => {
+    return () => {
+      clearRecaptchaVerifier('recaptcha-container');
+    };
+  }, []);
 
   // Handle Google / Gmail Authentication
   const handleGoogleSignIn = async () => {
@@ -953,7 +961,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
       </AnimatePresence>
 
       {/* Invisible Firebase Phone Auth reCAPTCHA container */}
-      <div id="recaptcha-container" className="hidden" />
+      <div id="recaptcha-container" />
     </div>
   );
 };
