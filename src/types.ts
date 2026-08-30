@@ -74,6 +74,7 @@ export interface Post {
   imageUrl: string;
   caption: string;
   timestamp: string;
+  createdAtMs?: number;
   likesCount: number;
   dislikesCount?: number;
   commentsCount: number;

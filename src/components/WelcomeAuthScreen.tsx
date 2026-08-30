@@ -82,7 +82,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
   // Clean up any active reCAPTCHA verifiers when unmounting
   useEffect(() => {
     return () => {
-      clearRecaptchaVerifier('recaptcha-container');
+      clearRecaptchaVerifier('send-otp-btn');
     };
   }, []);
 
@@ -175,7 +175,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
     setIsSendingOtp(true);
     try {
       const formatted = formatPhoneNumber(phone);
-      const res = await sendFirebasePhoneOtp(phone, 'recaptcha-container');
+      const res = await sendFirebasePhoneOtp(phone, 'send-otp-btn');
 
       if (res.success && res.confirmationResult) {
         setConfirmationResult(res.confirmationResult);

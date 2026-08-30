@@ -72,6 +72,7 @@ import {
   uploadPostImageToStorage,
   uploadStoryMediaToStorage,
   uploadChatMediaToStorage,
+  isValidMediaUrl,
 } from './services/firebase';
 
 function AppContent() {
@@ -261,32 +262,91 @@ function AppContent() {
 
     // 2. Real-time Firestore Subscriptions for Posts, Stories, Chat Threads, Users, and Notifications
     const unsubPosts = subscribeToPosts((remotePosts) => {
-      if (remotePosts && remotePosts.length > 0) {
-        setPosts(remotePosts);
+      if (remotePosts) {
+        setPosts((prevPosts) => {
+          const map = new Map<string, Post>();
+          // Seed with initial posts
+          INITIAL_POSTS.forEach((p) => map.set(p.id, p));
+          // Keep local in-memory posts
+          prevPosts.forEach((p) => map.set(p.id, p));
+          // Overlay remote posts from Firestore
+          remotePosts.forEach((p) => {
+            if (p && p.id && isValidMediaUrl(p.imageUrl)) {
+              map.set(p.id, p);
+            }
+          });
+
+          // Sort strictly newest first
+          return Array.from(map.values()).sort((a, b) => {
+            const timeA = a.createdAtMs || (a.id.startsWith('post_') ? parseInt(a.id.replace('post_', ''), 10) || 0 : 0);
+            const timeB = b.createdAtMs || (b.id.startsWith('post_') ? parseInt(b.id.replace('post_', ''), 10) || 0 : 0);
+            return timeB - timeA;
+          });
+        });
       }
     });
 
     const unsubStories = subscribeToStories((remoteStories) => {
       if (remoteStories && remoteStories.length > 0) {
-        setStories(remoteStories);
+        setStories((prevStories) => {
+          const map = new Map<string, Story>();
+          INITIAL_STORIES.forEach((s) => map.set(s.id, s));
+          prevStories.forEach((s) => map.set(s.id, s));
+          remoteStories.forEach((s) => {
+            if (s && s.id && isValidMediaUrl(s.mediaUrl)) {
+              map.set(s.id, s);
+            }
+          });
+          return Array.from(map.values());
+        });
       }
     });
 
     const unsubThreads = subscribeToChatThreads((remoteThreads) => {
       if (remoteThreads && remoteThreads.length > 0) {
-        setChatThreads(remoteThreads);
+        setChatThreads((prevThreads) => {
+          const map = new Map<string, ChatThread>();
+          INITIAL_CHAT_THREADS.forEach((t) => map.set(t.id, t));
+          prevThreads.forEach((t) => map.set(t.id, t));
+          remoteThreads.forEach((t) => {
+            if (t && t.id) {
+              map.set(t.id, t);
+            }
+          });
+          return Array.from(map.values());
+        });
       }
     });
 
     const unsubUsers = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
-        setUsers(remoteUsers);
+        setUsers((prevUsers) => {
+          const map = new Map<string, User>();
+          MOCK_USERS.forEach((u) => map.set(u.id, u));
+          prevUsers.forEach((u) => map.set(u.id, u));
+          remoteUsers.forEach((u) => {
+            if (u && u.id) {
+              map.set(u.id, u);
+            }
+          });
+          return Array.from(map.values());
+        });
       }
     });
 
     const unsubNotifs = subscribeToNotifications((remoteNotifs) => {
       if (remoteNotifs && remoteNotifs.length > 0) {
-        setNotifications(remoteNotifs);
+        setNotifications((prevNotifs) => {
+          const map = new Map<string, NotificationItem>();
+          INITIAL_NOTIFICATIONS.forEach((n) => map.set(n.id, n));
+          prevNotifs.forEach((n) => map.set(n.id, n));
+          remoteNotifs.forEach((n) => {
+            if (n && n.id) {
+              map.set(n.id, n);
+            }
+          });
+          return Array.from(map.values());
+        });
       }
     });
 
@@ -630,16 +690,18 @@ function AppContent() {
   };
 
   // Publish New Photo Post
-  const handlePublishPost = (
+  const handlePublishPost = async (
     newPostData: Omit<
       Post,
       'id' | 'likesCount' | 'dislikesCount' | 'commentsCount' | 'isLiked' | 'isDisliked' | 'userReaction' | 'isSaved' | 'isAutoRemoved' | 'comments' | 'timestamp'
     >
   ) => {
+    const now = Date.now();
     const createdPost: Post = {
       ...newPostData,
-      id: `post_${Date.now()}`,
+      id: `post_${now}`,
       timestamp: 'Just now',
+      createdAtMs: now,
       likesCount: 1,
       dislikesCount: 0,
       commentsCount: 0,
@@ -650,14 +712,17 @@ function AppContent() {
       comments: [],
     };
 
-    setPosts([createdPost, ...posts]);
-    syncPostToFirestore(createdPost).catch(console.warn);
+    // 1. Immediately prepend without overwriting or resetting the array
+    setPosts((prevPosts) => [createdPost, ...prevPosts.filter((p) => p.id !== createdPost.id)]);
 
-    // If post image is local data URL, upload to Firebase Storage and update post with download URL
+    // 2. Persist to Firestore collection 'posts'
+    await syncPostToFirestore(createdPost).catch(console.warn);
+
+    // 3. If post image is local data URL, upload to Firebase Storage, validate download URL, and update Firestore
     if (createdPost.imageUrl && createdPost.imageUrl.startsWith('data:')) {
       uploadPostImageToStorage(currentUser.id, createdPost.imageUrl)
         .then((downloadUrl) => {
-          if (downloadUrl && downloadUrl !== createdPost.imageUrl) {
+          if (isValidMediaUrl(downloadUrl) && downloadUrl !== createdPost.imageUrl) {
             const updatedPostWithStorageUrl = { ...createdPost, imageUrl: downloadUrl };
             setPosts((prevPosts) =>
               prevPosts.map((p) => (p.id === createdPost.id ? updatedPostWithStorageUrl : p))

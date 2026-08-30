@@ -34,34 +34,46 @@ import {
   getDownloadURL,
   StorageReference,
 } from 'firebase/storage';
-import firebaseConfig from '../../firebase-applet-config.json';
+import firebaseAppletConfig from '../../firebase-applet-config.json';
 import { User, Post, Story, ChatThread, Message, NotificationItem, UserReportItem, BugReportItem } from '../types';
 import { UniversalReportItem } from '../types/safety';
 
-// Initialize Firebase App instance safely
+// Exact live Firebase Configuration
+export const firebaseConfig = {
+  apiKey: "AIzaSyCMiX4Gx8vqrFFqfl3XBsLfMZI5hCpySDg",
+  authDomain: "gen-lang-client-0528558677.firebaseapp.com",
+  projectId: "gen-lang-client-0528558677",
+  storageBucket: "gen-lang-client-0528558677.firebasestorage.app",
+  messagingSenderId: "585330478854",
+  appId: "1:585330478854:web:7d80fe760d21cfcc8e9887"
+};
+
+// Initialize single Firebase App instance
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firebase Auth
+// Initialize single Firebase Auth instance
 export const auth = getAuth(app);
 
-// Initialize Firestore with custom databaseId if configured
-export const db = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+// Initialize single Firestore instance (with databaseId fallback if configured)
+const customDatabaseId = (firebaseAppletConfig as any)?.firestoreDatabaseId || 'ai-studio-socialapp-62fabc41-f69f-4729-9770-35262e6cbe5b';
+export const db = customDatabaseId
+  ? getFirestore(app, customDatabaseId)
   : getFirestore(app);
 
-// Lazy-initialize Firebase Cloud Storage safely
+// Initialize single Firebase Cloud Storage instance
+export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
+
+// Lazy-initialize Firebase Cloud Storage client safely
 let storageClient: any = null;
 export const getStorageClient = () => {
   if (!storageClient) {
     try {
-      storageClient = firebaseConfig.storageBucket
-        ? getStorage(app, `gs://${firebaseConfig.storageBucket}`)
-        : getStorage(app);
+      storageClient = storage;
     } catch (e) {
       try {
         storageClient = getStorage(app);
       } catch (err) {
-        console.warn('Firebase Storage not available in current configuration:', err);
+        console.warn('Firebase Storage initialization note:', err);
         return null;
       }
     }
@@ -125,9 +137,9 @@ export const formatPhoneNumber = (rawPhone: string): string => {
 
 // Singleton RecaptchaVerifier reference on window / module
 /**
- * Safely clears any active RecaptchaVerifier instance and cleans up the container DOM element
+ * Safely clears any active RecaptchaVerifier instance and cleans up any dynamic container DOM elements
  */
-export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-container'): void => {
+export const clearRecaptchaVerifier = (buttonOrContainerId: string = 'send-otp-btn'): void => {
   const windowObj = typeof window !== 'undefined' ? (window as any) : null;
   if (windowObj && windowObj.recaptchaVerifier) {
     try {
@@ -140,20 +152,25 @@ export const clearRecaptchaVerifier = (containerId: string = 'recaptcha-containe
   }
 
   if (typeof document !== 'undefined') {
-    const container = document.getElementById(containerId);
-    if (container) {
-      container.innerHTML = '';
+    const el = document.getElementById(buttonOrContainerId);
+    if (el && el.tagName.toLowerCase() === 'div') {
+      el.innerHTML = '';
+    }
+    const fallback = document.getElementById('recaptcha-container');
+    if (fallback) {
+      fallback.innerHTML = '';
     }
   }
 };
 
 /**
- * Initializes or re-uses the invisible RecaptchaVerifier instance following the Singleton/Cleanup pattern.
+ * Initializes or re-uses the invisible RecaptchaVerifier instance bound directly to the Send OTP button.
+ * Sets size to 'invisible' and badge to 'inline' so no visual puzzle, checkbox, or floating badge appears on screen.
  * Before creating a new RecaptchaVerifier instance, checks if window.recaptchaVerifier already exists.
  * If it exists, calls .clear() on it and sets it to null before re-initializing.
  */
 export const initRecaptchaVerifier = (
-  containerId: string = 'recaptcha-container'
+  buttonOrContainerId: string = 'send-otp-btn'
 ): RecaptchaVerifier => {
   const windowObj = typeof window !== 'undefined' ? (window as any) : null;
 
@@ -168,22 +185,31 @@ export const initRecaptchaVerifier = (
     windowObj.recaptchaWidgetId = undefined;
   }
 
-  // 2. Ensure container DOM element exists and is empty
+  // 2. Ensure target element or container exists
   if (typeof document !== 'undefined') {
-    let container = document.getElementById(containerId);
-    if (!container) {
-      container = document.createElement('div');
-      container.id = containerId;
-      document.body.appendChild(container);
+    let targetElement: HTMLElement | null = document.getElementById(buttonOrContainerId);
+    let elementToBind: string | HTMLElement = buttonOrContainerId;
+
+    if (!targetElement) {
+      // Create hidden fallback container if target button not found in DOM
+      let fallbackContainer = document.getElementById('recaptcha-container');
+      if (!fallbackContainer) {
+        fallbackContainer = document.createElement('div');
+        fallbackContainer.id = 'recaptcha-container';
+        fallbackContainer.style.display = 'none';
+        document.body.appendChild(fallbackContainer);
+      }
+      elementToBind = 'recaptcha-container';
     } else {
-      container.innerHTML = '';
+      elementToBind = targetElement;
     }
 
-    // 3. Create invisible RecaptchaVerifier bound to container
-    const verifier = new RecaptchaVerifier(auth, containerId, {
+    // 3. Create invisible RecaptchaVerifier bound directly to the button / element
+    const verifier = new RecaptchaVerifier(auth, elementToBind, {
       size: 'invisible',
+      badge: 'inline',
       callback: () => {
-        // reCAPTCHA solved
+        // Auto-verification on click solved seamlessly
       },
       'expired-callback': () => {
         console.warn('reCAPTCHA expired, automatically resetting widget');
@@ -223,10 +249,11 @@ export interface PhoneAuthSendResult {
 
 /**
  * Sends a real SMS verification code to the target phone number using Firebase Phone Authentication.
+ * Seamlessly verifies via invisible reCAPTCHA bound to the Send SMS button with zero puzzle / checkbox interruption.
  */
 export const sendFirebasePhoneOtp = async (
   rawPhoneNumber: string,
-  containerId: string = 'recaptcha-container'
+  buttonOrContainerId: string = 'send-otp-btn'
 ): Promise<PhoneAuthSendResult> => {
   const formatted = formatPhoneNumber(rawPhoneNumber);
   if (!formatted || formatted.length < 8) {
@@ -239,14 +266,36 @@ export const sendFirebasePhoneOtp = async (
   try {
     const windowObj = typeof window !== 'undefined' ? (window as any) : null;
     
-    // Ensure clean/active verifier instance
+    // Ensure clean/active verifier instance bound to Send SMS button
     let verifier = windowObj?.recaptchaVerifier;
     if (!verifier) {
-      verifier = initRecaptchaVerifier(containerId);
+      verifier = initRecaptchaVerifier(buttonOrContainerId);
     }
 
-    // Wrap signInWithPhoneNumber inside try-catch block
-    const confirmationResult = await signInWithPhoneNumber(auth, formatted, verifier);
+    // Explicitly render and trigger invisible background verification to eliminate captcha popup puzzles
+    try {
+      const widgetId = await verifier.render();
+      if (windowObj) {
+        windowObj.recaptchaWidgetId = widgetId;
+      }
+      if (typeof verifier.verify === 'function') {
+        await verifier.verify();
+      }
+    } catch (renderErr) {
+      console.warn('Recaptcha background verify notice:', renderErr);
+    }
+
+    // 10-second timeout race for signInWithPhoneNumber to prevent hanging indefinitely
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Verification timed out. Please try again.'));
+      }, 10000);
+    });
+
+    const confirmationResult = await Promise.race([
+      signInWithPhoneNumber(auth, formatted, verifier),
+      timeoutPromise,
+    ]);
 
     return {
       success: true,
@@ -271,10 +320,10 @@ export const sendFirebasePhoneOtp = async (
         }
       } catch (resetErr) {
         console.warn('grecaptcha.reset error, clearing verifier for fresh retry:', resetErr);
-        clearRecaptchaVerifier(containerId);
+        clearRecaptchaVerifier(buttonOrContainerId);
       }
     } else {
-      clearRecaptchaVerifier(containerId);
+      clearRecaptchaVerifier(buttonOrContainerId);
     }
 
     let message = 'Failed to send SMS verification code. Please try again.';
@@ -382,6 +431,20 @@ export const signInWithGooglePopup = async (): Promise<{ success: boolean; user?
 // Firebase Cloud Storage Helper Functions
 // ==========================================
 
+export const isValidMediaUrl = (url: any): boolean => {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.length < 5) return false;
+  if (trimmed === 'undefined' || trimmed === 'null') return false;
+  return (
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('data:video/') ||
+    trimmed.startsWith('blob:')
+  );
+};
+
 export interface UploadStorageOptions {
   dataOrUrlOrFile: File | Blob | string;
   storagePath: string;
@@ -398,7 +461,7 @@ export const uploadMediaToStorage = async (
   const { dataOrUrlOrFile, storagePath, contentType } = options;
   if (!dataOrUrlOrFile) return '';
 
-  // If already an external hosted URL (not a base64 Data URL), return as is
+  // If already an external hosted URL (not a base64 Data URL), validate and return as is
   if (
     typeof dataOrUrlOrFile === 'string' &&
     (dataOrUrlOrFile.startsWith('http://') || dataOrUrlOrFile.startsWith('https://')) &&
@@ -411,7 +474,7 @@ export const uploadMediaToStorage = async (
     await ensureFirebaseAuth();
     const storage = getStorageClient();
     if (!storage) {
-      return typeof dataOrUrlOrFile === 'string' ? dataOrUrlOrFile : '';
+      return typeof dataOrUrlOrFile === 'string' && isValidMediaUrl(dataOrUrlOrFile) ? dataOrUrlOrFile : '';
     }
     const storageRef: StorageReference = ref(storage, storagePath);
 
@@ -428,10 +491,13 @@ export const uploadMediaToStorage = async (
     }
 
     const downloadUrl = await getDownloadURL(storageRef);
-    return downloadUrl;
+    if (isValidMediaUrl(downloadUrl)) {
+      return downloadUrl;
+    }
+    return typeof dataOrUrlOrFile === 'string' ? dataOrUrlOrFile : '';
   } catch (error) {
     console.warn(`Firebase Cloud Storage upload fallback for ${storagePath}:`, error);
-    // If storage is pending initial bucket rules or network is limited, return original data URL seamlessly
+    // If storage is pending initial bucket rules or network is limited, return original valid data URL seamlessly
     return typeof dataOrUrlOrFile === 'string' ? dataOrUrlOrFile : '';
   }
 };
@@ -551,6 +617,7 @@ export const normalizePost = (raw: any): Post => {
       name: raw?.userName || raw?.authorName,
       username: raw?.username || raw?.authorUsername,
       avatar: raw?.userAvatar || raw?.authorAvatar,
+      isVerified: Boolean(raw?.user?.isVerified || raw?.isVerified),
     }
   );
 
@@ -566,13 +633,28 @@ export const normalizePost = (raw: any): Post => {
       }))
     : [];
 
+  const rawId = String(raw?.id || `post_${Date.now()}`);
+  let createdAtMs: number = typeof raw?.createdAtMs === 'number' ? raw.createdAtMs : 0;
+  if (!createdAtMs) {
+    if (rawId.startsWith('post_')) {
+      const parsed = parseInt(rawId.replace('post_', ''), 10);
+      if (!isNaN(parsed) && parsed > 1000000000) {
+        createdAtMs = parsed;
+      }
+    }
+  }
+  if (!createdAtMs) {
+    createdAtMs = Date.now();
+  }
+
   return {
-    id: raw?.id || String(Date.now()),
+    id: rawId,
     userId: raw?.userId || user.id,
     user,
     imageUrl: raw?.imageUrl || raw?.mediaUrl || '',
     caption: raw?.caption || '',
     timestamp: raw?.timestamp || 'Just now',
+    createdAtMs,
     likesCount: typeof raw?.likesCount === 'number' ? raw.likesCount : 0,
     dislikesCount: typeof raw?.dislikesCount === 'number' ? raw.dislikesCount : 0,
     commentsCount:
@@ -725,10 +807,44 @@ export const syncPostToFirestore = async (post: Post): Promise<void> => {
     await ensureFirebaseAuth();
     if (!post || !post.id) return;
     const postRef = doc(db, 'posts', post.id);
-    await setDoc(postRef, {
-      ...post,
-      syncedAt: serverTimestamp(),
-    }, { merge: true });
+    const userId = post.userId || post.user?.id || 'user';
+    const createdAtMs =
+      post.createdAtMs ||
+      (post.id.startsWith('post_') ? parseInt(post.id.replace('post_', ''), 10) || Date.now() : Date.now());
+
+    await setDoc(
+      postRef,
+      {
+        id: post.id,
+        userId,
+        user: {
+          id: post.user?.id || userId,
+          name: post.user?.name || 'Funshann Member',
+          username: post.user?.username || 'user',
+          avatar: post.user?.avatar || DEFAULT_AVATAR,
+          isVerified: Boolean(post.user?.isVerified),
+        },
+        imageUrl: post.imageUrl || '',
+        caption: post.caption || '',
+        location: post.location || '',
+        timestamp: post.timestamp || 'Just now',
+        createdAtMs,
+        likesCount: typeof post.likesCount === 'number' ? post.likesCount : 0,
+        dislikesCount: typeof post.dislikesCount === 'number' ? post.dislikesCount : 0,
+        commentsCount:
+          typeof post.commentsCount === 'number'
+            ? post.commentsCount
+            : (post.comments?.length || 0),
+        isLiked: Boolean(post.isLiked),
+        isDisliked: Boolean(post.isDisliked),
+        userReaction: post.userReaction || null,
+        isSaved: Boolean(post.isSaved),
+        isAutoRemoved: Boolean(post.isAutoRemoved),
+        comments: Array.isArray(post.comments) ? post.comments : [],
+        syncedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (error) {
     console.warn('Firestore post sync fallback to local:', error);
   }
@@ -768,9 +884,13 @@ export const getPostsFromFirestore = async (): Promise<Post[]> => {
     const result: Post[] = [];
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
-        result.push(normalizePost(docSnap.data()));
+        const p = normalizePost({ ...docSnap.data(), id: docSnap.id });
+        if (isValidMediaUrl(p.imageUrl)) {
+          result.push(p);
+        }
       }
     });
+    result.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
     return result;
   } catch (error) {
     console.warn('Firestore getPosts fallback:', error);
@@ -787,12 +907,16 @@ export const subscribeToPosts = (callback: (posts: Post[]) => void): (() => void
         const result: Post[] = [];
         snapshot.forEach((docSnap) => {
           if (docSnap.exists()) {
-            result.push(normalizePost(docSnap.data()));
+            const data = docSnap.data();
+            const p = normalizePost({ ...data, id: docSnap.id });
+            if (isValidMediaUrl(p.imageUrl)) {
+              result.push(p);
+            }
           }
         });
-        if (result.length > 0) {
-          callback(result);
-        }
+        // Sort descending so newly added posts (highest timestamp) stay at the top
+        result.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+        callback(result);
       },
       (error) => {
         console.warn('Posts real-time listener warning:', error);

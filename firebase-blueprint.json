@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profile records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "avatar": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "posts": {
+      "title": "Post",
+      "description": "User posts and media items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "caption": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "userId", "imageUrl"]
+    },
+    "stories": {
+      "title": "Story",
+      "description": "User stories and temporary reels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "mediaUrl": { "type": "string" }
+      },
+      "required": ["id", "userId", "mediaUrl"]
+    }
+  }
+}

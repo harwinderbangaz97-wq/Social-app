@@ -1,0 +1,79 @@
+import fs from 'fs';
+import path from 'path';
+
+const distDir = path.resolve(process.cwd(), 'dist');
+const assetsDir = path.resolve(distDir, 'assets');
+
+if (!fs.existsSync(distDir)) {
+  console.error('dist directory does not exist. Please run npm run build first.');
+  process.exit(1);
+}
+
+const files = fs.readdirSync(assetsDir);
+const cssFile = files.find(f => f.endsWith('.css'));
+const jsFile = files.find(f => f.endsWith('.js'));
+
+if (!cssFile || !jsFile) {
+  console.error('Could not find CSS or JS bundle in dist/assets');
+  process.exit(1);
+}
+
+const cssContent = fs.readFileSync(path.join(assetsDir, cssFile), 'utf-8');
+const jsContent = fs.readFileSync(path.join(assetsDir, jsFile), 'utf-8');
+
+const standaloneHtml = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:b="http://www.google.com/2005/gml/b" xmlns:data="http://www.google.com/2005/gml/data" xmlns:expr="http://www.google.com/2005/gml/expr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Funshann</title>
+  <meta name="description" content="Funshann - Full-screen native Android social network." />
+  <meta name="theme-color" content="#0F172A" />
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
+  
+  <!-- Blogger required skin tag (empty/minimal to prevent default blogger overrides) -->
+  <b:skin><![CDATA[
+    /* Reset Blogger default styles */
+    body, html { margin:0; padding:0; width:100%; height:100%; }
+    .navbar, .header, .footer, .widget { display:none !important; }
+  ]]></b:skin>
+
+  <style>
+/*<![CDATA[*/
+${cssContent}
+/*]]>*/
+  </style>
+</head>
+<body class="bg-[#f4f7fb] text-[#1e293b] antialiased selection:bg-[#5B9DFF]/20 selection:text-[#1d4ed8] overflow-x-hidden">
+  <!-- Blogger Main Section Requirement -->
+  <b:section id="main" preferred="yes" maxwidgets="1" showaddelement="no"></b:section>
+
+  <div id="root"></div>
+  <div id="recaptcha-container"></div>
+
+  <script>
+//<![CDATA[
+${jsContent}
+//]]>
+  </script>
+</body>
+</html>`;
+
+const outPathDist = path.join(distDir, 'standalone.html');
+fs.writeFileSync(outPathDist, standaloneHtml, 'utf-8');
+
+const publicDir = path.resolve(process.cwd(), 'public');
+if (!fs.existsSync(publicDir)) {
+  fs.mkdirSync(publicDir, { recursive: true });
+}
+const outPathPublic = path.join(publicDir, 'standalone.html');
+fs.writeFileSync(outPathPublic, standaloneHtml, 'utf-8');
+
+console.log('Successfully created standalone HTML bundle at:');
+console.log(' - ' + outPathDist);
+console.log(' - ' + outPathPublic);
+console.log('File size: ' + (Buffer.byteLength(standaloneHtml, 'utf-8') / (1024 * 1024)).toFixed(2) + ' MB');

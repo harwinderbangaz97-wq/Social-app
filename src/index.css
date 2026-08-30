@@ -387,3 +387,17 @@ video::-webkit-media-controls-enclosure {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* =========================================================================
+   INVISIBLE RECAPTCHA BADGE SUPPRESSION (Compliant with on-screen Terms/Privacy)
+   ========================================================================= */
+.grecaptcha-badge {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+  z-index: -9999 !important;
+}
