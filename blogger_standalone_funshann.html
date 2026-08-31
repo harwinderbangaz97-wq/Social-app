@@ -47,6 +47,8 @@
   };
 
   const AuthScreen = () => {
+    const [isSignup, setIsSignup] = useState(false);
+    const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [otp, setOtp] = useState('');
     const [confirmResult, setConfirmResult] = useState(null);
@@ -58,10 +60,8 @@
     const recaptchaVerifier = useRef(null);
 
     useEffect(() => {
-      // Create verifier only once on mount
       recaptchaVerifier.current = new firebase.auth.RecaptchaVerifier('recaptcha-container', { size: 'invisible' });
       return () => {
-        // Cleanup on unmount
         if (recaptchaVerifier.current) {
           recaptchaVerifier.current.clear();
           recaptchaVerifier.current = null;
@@ -86,18 +86,26 @@
 
     const verifyOTP = async () => runAuth(async () => {
       if (!confirmResult) throw new Error("Please send OTP first");
-      await confirmResult.confirm(otp);
+      const userCredential = await confirmResult.confirm(otp);
+      if (isSignup && name) {
+        await userCredential.user.updateProfile({ displayName: name });
+      }
     });
 
     const emailLogin = () => runAuth(() => auth.signInWithEmailAndPassword(email, password));
-    const emailSignup = () => runAuth(() => auth.createUserWithEmailAndPassword(email, password));
+    const emailSignup = () => runAuth(async () => {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        await userCredential.user.updateProfile({ displayName: name });
+        await userCredential.user.sendEmailVerification();
+    });
 
     return (
       <div className="h-screen flex flex-col items-center justify-center p-6 gap-4 overflow-y-auto">
-        <h2 className="text-2xl font-bold">Sign In</h2>
+        <h2 className="text-2xl font-bold">{isSignup ? 'Sign Up' : 'Sign In'}</h2>
         {error && <div className="text-red-500 text-sm">{error}</div>}
         <button onClick={googleLogin} className="w-full p-4 bg-white border rounded-2xl" disabled={loading}>Sign in with Google</button>
         
+        <input className="w-full p-4 border rounded-2xl" placeholder="Full Name (for Signup)" onChange={e => setName(e.target.value)} disabled={loading} />
         <input className="w-full p-4 border rounded-2xl" placeholder="Email" onChange={e => setEmail(e.target.value)} disabled={loading} />
         <input className="w-full p-4 border rounded-2xl" type="password" placeholder="Password" onChange={e => setPassword(e.target.value)} disabled={loading} />
         <div className="flex gap-2 w-full">
@@ -111,8 +119,10 @@
           <input className="w-full p-4 border rounded-2xl" placeholder="OTP" onChange={e => setOtp(e.target.value)} disabled={loading} />
           <button onClick={verifyOTP} className="w-full p-4 bg-blue-600 text-white rounded-2xl" disabled={loading || !otp}>Verify OTP & Login</button>
         </>}
+        <button onClick={() => setIsSignup(!isSignup)} className="text-blue-600 text-sm">
+          {isSignup ? 'Already have an account? Login' : 'Need an account? Signup'}
+        </button>
       </div>
-    );
   };
 
   const MainApp = ({user}) => {
