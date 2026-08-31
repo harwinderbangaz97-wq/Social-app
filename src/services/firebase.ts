@@ -1,7 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
-  signInAnonymously,
   onAuthStateChanged,
   User as FirebaseUser,
   signInWithPhoneNumber,
@@ -53,6 +52,7 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 
 // Initialize single Firebase Auth instance
 export const auth = getAuth(app);
+export { onAuthStateChanged };
 
 // Initialize single Firestore instance (with databaseId fallback if configured)
 const customDatabaseId = (firebaseAppletConfig as any)?.firestoreDatabaseId || 'ai-studio-socialapp-62fabc41-f69f-4729-9770-35262e6cbe5b';
@@ -89,13 +89,7 @@ export const ensureFirebaseAuth = async (): Promise<FirebaseUser | null> => {
       if (user) {
         resolve(user);
       } else {
-        try {
-          const userCredential = await signInAnonymously(auth);
-          resolve(userCredential.user);
-        } catch (error) {
-          console.warn('Firebase anonymous authentication note:', error);
-          resolve(null);
-        }
+        resolve(null);
       }
     });
   });

@@ -73,6 +73,8 @@ import {
   uploadStoryMediaToStorage,
   uploadChatMediaToStorage,
   isValidMediaUrl,
+  auth,
+  onAuthStateChanged,
 } from './services/firebase';
 
 function AppContent() {
@@ -131,14 +133,7 @@ function AppContent() {
     setShowSplash(false);
   };
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      const explicitAuth = localStorage.getItem('funshann_is_authenticated');
-      return explicitAuth === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   const handleAuthenticate = (userData: Partial<User>) => {
     handleUpdateCurrentUser(userData);
@@ -244,9 +239,11 @@ function AppContent() {
 
   // Seamless Network Connectivity & Recovery Listener, Firebase Auth Init, and Real-time Database Subscriptions
   useEffect(() => {
-    // 1. Initialize Firebase Auth Session in background and sync current user profile
-    ensureFirebaseAuth()
-      .then(() => {
+    // 1. Initialize Firebase Auth Session and listen for changes
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsAuthenticated(true);
+        // Sync current user profile
         syncUserProfileToFirestore(currentUser).catch(console.warn);
         if (currentUser.id) {
           getUserProfileFromFirestore(currentUser.id)
@@ -257,8 +254,10 @@ function AppContent() {
             })
             .catch(console.warn);
         }
-      })
-      .catch(console.warn);
+      } else {
+        setIsAuthenticated(false);
+      }
+    });
 
     // 2. Real-time Firestore Subscriptions for Posts, Stories, Chat Threads, Users, and Notifications
     const unsubPosts = subscribeToPosts((remotePosts) => {
@@ -367,6 +366,7 @@ function AppContent() {
     window.addEventListener('offline', handleOffline);
 
     return () => {
+      unsubscribeAuth();
       unsubPosts();
       unsubStories();
       unsubThreads();
