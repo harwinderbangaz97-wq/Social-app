@@ -25,7 +25,7 @@
   <div id="root"></div>
   <div id="recaptcha-container"></div>
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+  const { useState, useEffect, useRef } = React;
   const firebaseConfig = { apiKey: "AIzaSyCMiX4Gx8vqrFFqfl3XBsLfMZI5hCpySDg", authDomain: "gen-lang-client-0528558677.firebaseapp.com", projectId: "gen-lang-client-0528558677", storageBucket: "gen-lang-client-0528558677.firebasestorage.app", messagingSenderId: "585330478854", appId: "1:585330478854:web:7d80fe760d21cfcc8e9887" };
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
@@ -37,66 +37,69 @@
 
     useEffect(() => {
       return auth.onAuthStateChanged((u) => {
+        console.log("onAuthStateChanged called, user:", u);
         setUser(u);
         setLoading(false);
       });
     }, []);
 
     if (loading) return <div className="h-screen flex items-center justify-center">Loading...</div>;
+    // Check email verification for email-based users
+    if (user && user.email && !user.emailVerified) return <div className="h-screen flex flex-col items-center justify-center p-6 gap-4">Please verify your email address to continue. <button onClick={() => auth.signOut()} className="p-2 bg-slate-100 rounded-xl">Logout</button></div>;
     return user ? <MainApp user={user} /> : <AuthScreen />;
   };
 
   const AuthScreen = () => {
     const [isSignup, setIsSignup] = useState(false);
+    const [authMethod, setAuthMethod] = useState('email'); // 'email' or 'phone'
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [otp, setOtp] = useState('');
     const [confirmResult, setConfirmResult] = useState(null);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState(null);
-    const [loading, setLoading] = useState(false);
-    
-    const recaptchaVerifier = useRef(null);
+    const confirmResultRef = useRef(null);
 
+    // Keep the ref in sync with the state
     useEffect(() => {
-      recaptchaVerifier.current = new firebase.auth.RecaptchaVerifier('recaptcha-container', { size: 'invisible' });
-      return () => {
-        if (recaptchaVerifier.current) {
-          recaptchaVerifier.current.clear();
-          recaptchaVerifier.current = null;
-        }
-      };
-    }, []);
+        confirmResultRef.current = confirmResult;
+    }, [confirmResult]);
 
-    const runAuth = async (func) => {
-      setLoading(true);
-      setError(null);
-      try { await func(); }
-      catch (e) { setError(e.message); }
-      finally { setLoading(false); }
-    };
-
-    const googleLogin = () => runAuth(() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()));
-    
     const sendOTP = async () => runAuth(async () => {
       if (!recaptchaVerifier.current) throw new Error("reCAPTCHA not initialized");
-      setConfirmResult(await auth.signInWithPhoneNumber(phone, recaptchaVerifier.current));
+      const result = await auth.signInWithPhoneNumber(phone, recaptchaVerifier.current);
+      setConfirmResult(result);
     });
 
-    const verifyOTP = async () => runAuth(async () => {
-      if (!confirmResult) throw new Error("Please send OTP first");
-      const userCredential = await confirmResult.confirm(otp);
-      if (isSignup && name) {
-        await userCredential.user.updateProfile({ displayName: name });
+    const verifyOTP = async () => {
+      setLoading(true);
+      setError(null);
+      console.log("verifyOTP called, otp:", otp, "confirmResultRef exists:", !!confirmResultRef.current);
+      try {
+        if (!confirmResultRef.current) throw new Error("Please send OTP first");
+        console.log("Calling confirmResult.confirm...");
+        
+        const userCredential = await confirmResultRef.current.confirm(otp);
+        console.log("confirmResult.confirm successful, user:", userCredential.user.uid);
+        
+        if (isSignup && name) {
+          console.log("Updating profile with name:", name);
+          await userCredential.user.updateProfile({ displayName: name });
+          console.log("Profile updated");
+        }
+        
+        // Let onAuthStateChanged handle the unmount
+      } catch (e) {
+        console.error("OTP verification error:", e);
+        setError(e.message);
+        setLoading(false);
       }
-    });
+    };
 
     const emailLogin = () => runAuth(() => auth.signInWithEmailAndPassword(email, password));
     const emailSignup = () => runAuth(async () => {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         await userCredential.user.updateProfile({ displayName: name });
         await userCredential.user.sendEmailVerification();
+        alert("Verification email sent!");
     });
 
     return (
@@ -105,24 +108,35 @@
         {error && <div className="text-red-500 text-sm">{error}</div>}
         <button onClick={googleLogin} className="w-full p-4 bg-white border rounded-2xl" disabled={loading}>Sign in with Google</button>
         
-        <input className="w-full p-4 border rounded-2xl" placeholder="Full Name (for Signup)" onChange={e => setName(e.target.value)} disabled={loading} />
-        <input className="w-full p-4 border rounded-2xl" placeholder="Email" onChange={e => setEmail(e.target.value)} disabled={loading} />
-        <input className="w-full p-4 border rounded-2xl" type="password" placeholder="Password" onChange={e => setPassword(e.target.value)} disabled={loading} />
         <div className="flex gap-2 w-full">
-          <button onClick={emailLogin} className="flex-1 p-4 bg-slate-800 text-white rounded-2xl" disabled={loading}>Login</button>
-          <button onClick={emailSignup} className="flex-1 p-4 bg-slate-600 text-white rounded-2xl" disabled={loading}>Signup</button>
+            <button onClick={() => setAuthMethod('email')} className={`flex-1 p-2 rounded-xl ${authMethod === 'email' ? 'bg-blue-600 text-white' : 'bg-slate-100'}`}>Email</button>
+            <button onClick={() => setAuthMethod('phone')} className={`flex-1 p-2 rounded-xl ${authMethod === 'phone' ? 'bg-blue-600 text-white' : 'bg-slate-100'}`}>Phone</button>
         </div>
 
-        <input className="w-full p-4 border rounded-2xl" placeholder="Phone (+1...)" onChange={e => setPhone(e.target.value)} disabled={loading} />
-        <button onClick={sendOTP} className="w-full p-4 bg-slate-800 text-white rounded-2xl" disabled={loading || !phone}>Send SMS OTP</button>
-        {confirmResult && <>
-          <input className="w-full p-4 border rounded-2xl" placeholder="OTP" onChange={e => setOtp(e.target.value)} disabled={loading} />
-          <button onClick={verifyOTP} className="w-full p-4 bg-blue-600 text-white rounded-2xl" disabled={loading || !otp}>Verify OTP & Login</button>
+        {authMethod === 'email' && <>
+          {isSignup && <input className="w-full p-4 border rounded-2xl" placeholder="Full Name" onChange={e => setName(e.target.value)} disabled={loading} />}
+          <input className="w-full p-4 border rounded-2xl" placeholder="Email" onChange={e => setEmail(e.target.value)} disabled={loading} />
+          <input className="w-full p-4 border rounded-2xl" type="password" placeholder="Password" onChange={e => setPassword(e.target.value)} disabled={loading} />
+          <div className="flex gap-2 w-full">
+            <button onClick={isSignup ? emailSignup : emailLogin} className="w-full p-4 bg-slate-800 text-white rounded-2xl" disabled={loading}>{isSignup ? 'Signup' : 'Login'}</button>
+          </div>
         </>}
+
+        {authMethod === 'phone' && <>
+          {isSignup && <input className="w-full p-4 border rounded-2xl" placeholder="Full Name" onChange={e => setName(e.target.value)} disabled={loading} />}
+          <input className="w-full p-4 border rounded-2xl" placeholder="Phone (+1...)" onChange={e => setPhone(e.target.value)} disabled={loading} />
+          {!confirmResult && <button onClick={sendOTP} className="w-full p-4 bg-slate-800 text-white rounded-2xl" disabled={loading || !phone}>Send SMS OTP</button>}
+          {confirmResult && <>
+            <input className="w-full p-4 border rounded-2xl" placeholder="OTP" onChange={e => setOtp(e.target.value)} disabled={loading} />
+            <button onClick={verifyOTP} className="w-full p-4 bg-blue-600 text-white rounded-2xl" disabled={loading || !otp}>Verify OTP & Login</button>
+          </>}
+        </>}
+
         <button onClick={() => setIsSignup(!isSignup)} className="text-blue-600 text-sm">
           {isSignup ? 'Already have an account? Login' : 'Need an account? Signup'}
         </button>
       </div>
+    );
   };
 
   const MainApp = ({user}) => {
