@@ -2,12 +2,15 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   onAuthStateChanged,
-  User as FirebaseUser,
   signInWithPhoneNumber,
   RecaptchaVerifier,
   ConfirmationResult,
   GoogleAuthProvider,
   signInWithPopup,
+  FacebookAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -52,7 +55,15 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 
 // Initialize single Firebase Auth instance
 export const auth = getAuth(app);
-export { onAuthStateChanged };
+export { 
+  onAuthStateChanged, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  sendEmailVerification,
+  signInWithPopup,
+  GoogleAuthProvider,
+  FacebookAuthProvider
+};
 
 // Initialize single Firestore instance (with databaseId fallback if configured)
 const customDatabaseId = (firebaseAppletConfig as any)?.firestoreDatabaseId || 'ai-studio-socialapp-62fabc41-f69f-4729-9770-35262e6cbe5b';

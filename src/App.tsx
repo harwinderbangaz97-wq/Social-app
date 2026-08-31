@@ -110,17 +110,6 @@ function AppContent() {
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
-  const handleAuthenticate = (userData: Partial<User>) => {
-    handleUpdateCurrentUser(userData);
-    try {
-      localStorage.setItem('funshann_is_authenticated', 'true');
-    } catch (e) {
-      console.error(e);
-    }
-    setIsAuthenticated(true);
-    showToast('Welcome to Funshann! 🎉');
-  };
-
   const handleUpdateCurrentUser = (updated: Partial<User>) => {
     setCurrentUser((prev) => {
       const nextUser = { ...prev, ...updated };
@@ -148,7 +137,6 @@ function AppContent() {
           })
           .catch(console.warn);
       }
-
       return nextUser;
     });
 
@@ -215,19 +203,23 @@ function AppContent() {
   // Seamless Network Connectivity & Recovery Listener, Firebase Auth Init, and Real-time Database Subscriptions
   useEffect(() => {
     // 1. Initialize Firebase Auth Session and listen for changes
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setIsAuthenticated(true);
-        // Sync current user profile
-        syncUserProfileToFirestore(currentUser).catch(console.warn);
-        if (currentUser.id) {
-          getUserProfileFromFirestore(currentUser.id)
-            .then((remoteUser) => {
-              if (remoteUser) {
-                setCurrentUser((prev) => ({ ...prev, ...remoteUser }));
-              }
-            })
-            .catch(console.warn);
+        try {
+          const remoteUser = await getUserProfileFromFirestore(user.uid);
+          if (remoteUser) {
+            setCurrentUser((prev) => ({ ...prev, ...remoteUser }));
+          } else {
+             // If no profile exists, maybe it's a new user, initialize with Firebase info
+             setCurrentUser(prev => ({
+                ...prev,
+                id: user.uid,
+                email: user.email || prev.email
+             }));
+          }
+        } catch (err) {
+          console.error("Auth state change profile fetch error:", err);
         }
       } else {
         setIsAuthenticated(false);
@@ -1482,7 +1474,7 @@ function AppContent() {
       </AnimatePresence>
 
       {!showSplash && !isAuthenticated ? (
-        <WelcomeAuthScreen onAuthenticate={handleAuthenticate} theme={theme} />
+        <WelcomeAuthScreen theme={theme} />
       ) : (
         !showSplash && (
           <DeviceFrame theme={theme} onThemeChange={handleUpdateTheme}>

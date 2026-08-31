@@ -30,10 +30,16 @@ import {
   syncUserProfileToFirestore,
   getUserProfileFromFirestore,
   clearRecaptchaVerifier,
+  signInWithPopup,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+  auth
 } from '../services/firebase';
 
 interface WelcomeAuthScreenProps {
-  onAuthenticate: (user: Partial<User>) => void;
   onContinueAsGuest?: () => void;
   theme?: ThemeMode;
 }
@@ -42,7 +48,6 @@ type AuthViewMode = 'welcome' | 'signup' | 'signin';
 type SignupMethod = 'email' | 'mobile';
 
 export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
-  onAuthenticate,
   onContinueAsGuest,
 }) => {
   const [viewMode, setViewMode] = useState<AuthViewMode>('welcome');
@@ -90,52 +95,92 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
   const handleGoogleSignIn = async () => {
     setErrorMessage('');
     try {
-      const res = await signInWithGooglePopup();
-      if (res.success && res.user) {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const res = await signInWithPopup(auth, provider);
+      
+      if (res.user) {
         const u = res.user;
         const existing = await getUserProfileFromFirestore(u.uid);
-        const nameToUse = u.displayName || existing?.name || 'Harwinder Banga';
+        
+        // If it's a new user, create a profile.
+        // If existing, we use the profile.
         const userObj: Partial<User> = {
           id: u.uid,
-          name: nameToUse,
+          name: u.displayName || existing?.name || 'Funshann Member',
           username: existing?.username || (u.displayName || u.email?.split('@')[0] || 'google_user').toLowerCase().replace(/[^a-z0-9_]/g, ''),
           email: u.email || undefined,
           avatar: u.photoURL || existing?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
           bio: existing?.bio || `Creating vibes on Funshann ✨ | Connected with Google`,
         };
         await syncUserProfileToFirestore(userObj);
-        onAuthenticate(userObj);
-      } else {
-        // Fallback for popups blocked in strict browser contexts
-        onAuthenticate({
-          name: 'Harwinder Banga',
-          username: 'harwinder.banga',
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
-          bio: 'Creating vibes on Funshann ✨ | Connected with Google',
-        });
       }
-    } catch {
-      onAuthenticate({
-        name: 'Harwinder Banga',
-        username: 'harwinder.banga',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
-        bio: 'Creating vibes on Funshann ✨ | Connected with Google',
-      });
+    } catch (error: any) {
+      console.error('Google Sign-In error:', error);
+      setErrorMessage(error?.message || 'Google Sign-In failed.');
     }
   };
 
   // Handle Facebook Authentication
-  const handleFacebookSignIn = () => {
-    onAuthenticate({
-      name: 'Harwinder Singh',
-      username: 'harwinder_singh',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
-      bio: 'Sharing moments & building real connections on Funshann 💙',
-    });
+  const handleFacebookSignIn = async () => {
+    setErrorMessage('');
+    try {
+      const provider = new FacebookAuthProvider();
+      const res = await signInWithPopup(auth, provider);
+      
+      if (res.user) {
+        const u = res.user;
+        const existing = await getUserProfileFromFirestore(u.uid);
+        
+        const userObj: Partial<User> = {
+          id: u.uid,
+          name: u.displayName || existing?.name || 'Funshann Member',
+          username: existing?.username || (u.displayName || u.email?.split('@')[0] || 'fb_user').toLowerCase().replace(/[^a-z0-9_]/g, ''),
+          email: u.email || undefined,
+          avatar: u.photoURL || existing?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
+          bio: existing?.bio || 'Sharing moments & building real connections on Funshann 💙',
+        };
+        await syncUserProfileToFirestore(userObj);
+      }
+    } catch (error: any) {
+      console.error('Facebook Sign-In error:', error);
+      setErrorMessage(error?.message || 'Facebook Sign-In failed or is not configured.');
+    }
   };
 
-  // Handle Email Sign In / Registration
-  const handleSubmitEmail = async (e: React.FormEvent) => {
+  // Handle Email Sign Up
+  const handleEmailSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+    if (!email || !password || !fullName) {
+      setErrorMessage('Please fill in all fields.');
+      return;
+    }
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await sendEmailVerification(userCredential.user);
+      
+      const userProfile: Partial<User> = {
+        id: userCredential.user.uid,
+        name: fullName.trim(),
+        username: email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, ''),
+        email: email.trim(),
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+        bio: `Hello from ${fullName.trim()} on Funshann 📸✨`,
+      };
+
+      await syncUserProfileToFirestore(userProfile);
+      setErrorMessage('Account created. Please verify your email before logging in.');
+      setViewMode('signin');
+    } catch (error: any) {
+      console.error('Email Signup error:', error);
+      setErrorMessage(error?.message || 'Email Signup failed.');
+    }
+  };
+
+  // Handle Email Sign In
+  const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     if (!email || !password) {
@@ -143,25 +188,17 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
       return;
     }
 
-    if (viewMode === 'signup' && !fullName) {
-      setErrorMessage('Please enter your full name.');
-      return;
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      if (!userCredential.user.emailVerified) {
+        setErrorMessage('Please verify your email address to log in.');
+        return;
+      }
+      // Successfully authenticated
+    } catch (error: any) {
+      console.error('Email Login error:', error);
+      setErrorMessage(error?.message || 'Email Login failed.');
     }
-
-    const nameToUse = fullName.trim() || email.split('@')[0] || 'Funshann Creator';
-    const cleanUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '') || 'fun_user';
-
-    const userProfile: Partial<User> = {
-      id: `usr_${Date.now()}`,
-      name: nameToUse,
-      username: cleanUsername,
-      email: email.trim(),
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
-      bio: `Hello from ${nameToUse} on Funshann 📸✨`,
-    };
-
-    await syncUserProfileToFirestore(userProfile);
-    onAuthenticate(userProfile);
   };
 
   // Send real SMS OTP via Firebase Authentication
@@ -520,7 +557,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
 
               {/* EMAIL REGISTRATION FORM */}
               {signupMethod === 'email' && (
-                <form onSubmit={handleSubmitEmail} className="flex flex-col gap-3">
+                <form onSubmit={handleEmailSignup} className="flex flex-col gap-3">
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">Full Name</label>
                     <div className="relative">
@@ -767,7 +804,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handleSubmitEmail} className="flex flex-col gap-3.5">
+              <form onSubmit={handleEmailLogin} className="flex flex-col gap-3.5">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Email or Username</label>
                   <div className="relative">
