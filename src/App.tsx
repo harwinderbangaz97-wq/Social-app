@@ -101,35 +101,10 @@ function AppContent() {
     canGoBack,
   } = useNavigation();
 
-  const [currentUser, setCurrentUser] = useState<User>(() => {
-    try {
-      const saved = localStorage.getItem('funshann_current_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return { ...CURRENT_USER, ...parsed };
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return CURRENT_USER;
-  });
-
-  const [showSplash, setShowSplash] = useState<boolean>(() => {
-    try {
-      // Only display splash screen once during genuine cold start of the session
-      const alreadyShown = sessionStorage.getItem('funshann_splash_shown');
-      return alreadyShown !== 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [currentUser, setCurrentUser] = useState<User>(CURRENT_USER);
+  const [showSplash, setShowSplash] = useState<boolean>(true);
 
   const handleFinishSplash = () => {
-    try {
-      sessionStorage.setItem('funshann_splash_shown', 'true');
-    } catch (e) {
-      console.error(e);
-    }
     setShowSplash(false);
   };
 
@@ -1451,12 +1426,6 @@ function AppContent() {
 
   const handleLogout = () => {
     setCurrentUser(CURRENT_USER);
-    try {
-      localStorage.removeItem('funshann_current_user');
-      localStorage.setItem('funshann_is_authenticated', 'false');
-    } catch (e) {
-      console.error(e);
-    }
     setIsAuthenticated(false);
     showToast('Logged out successfully');
   };

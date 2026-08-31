@@ -76,7 +76,6 @@ export function initiateAccountDeletion(
     localStorage.removeItem(`funshann_search_history_${user.id}`);
     localStorage.removeItem(`funshann_drafts_${user.id}`);
     localStorage.removeItem(`funshann_chat_drafts_${user.id}`);
-    localStorage.removeItem('funshann_active_token');
   } catch (e) {
     console.warn('Storage purge warning:', e);
   }
