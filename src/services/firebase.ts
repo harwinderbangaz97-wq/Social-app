@@ -11,6 +11,8 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendEmailVerification,
+  signOut,
+  User as FirebaseUser,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -21,6 +23,8 @@ import {
   getDocs,
   deleteDoc,
   updateDoc,
+  runTransaction,
+  increment,
   query,
   limit,
   orderBy,
@@ -62,7 +66,8 @@ export {
   sendEmailVerification,
   signInWithPopup,
   GoogleAuthProvider,
-  FacebookAuthProvider
+  FacebookAuthProvider,
+  signOut
 };
 
 // Initialize single Firestore instance (with databaseId fallback if configured)
@@ -1181,6 +1186,41 @@ export const syncUserReportToFirestore = async (report: UserReportItem | Univers
   } catch (error) {
     console.warn('Firestore user report sync fallback to local:', error);
   }
+};
+
+export const followUser = async (followerUid: string, followingUid: string): Promise<void> => {
+  if (followerUid === followingUid) return;
+  const followRef = doc(db, 'follows', `${followerUid}_${followingUid}`);
+  const followerRef = doc(db, 'users', followerUid);
+  const followingRef = doc(db, 'users', followingUid);
+
+  await runTransaction(db, async (transaction) => {
+    const followDoc = await transaction.get(followRef);
+    if (followDoc.exists()) return; // Already following
+
+    transaction.set(followRef, {
+      followerUid,
+      followingUid,
+      createdAt: serverTimestamp(),
+    });
+    transaction.update(followerRef, { followingCount: increment(1) });
+    transaction.update(followingRef, { followersCount: increment(1) });
+  });
+};
+
+export const unfollowUser = async (followerUid: string, followingUid: string): Promise<void> => {
+  const followRef = doc(db, 'follows', `${followerUid}_${followingUid}`);
+  const followerRef = doc(db, 'users', followerUid);
+  const followingRef = doc(db, 'users', followingUid);
+
+  await runTransaction(db, async (transaction) => {
+    const followDoc = await transaction.get(followRef);
+    if (!followDoc.exists()) return; // Not following
+
+    transaction.delete(followRef);
+    transaction.update(followerRef, { followingCount: increment(-1) });
+    transaction.update(followingRef, { followersCount: increment(-1) });
+  });
 };
 
 export const syncBugReportToFirestore = async (report: BugReportItem): Promise<void> => {

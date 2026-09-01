@@ -1,6 +1,6 @@
-import React, { useState, useEffect, Component, ErrorInfo } from 'react';
+import React, { useState, useEffect, Component, ErrorInfo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import {
   CURRENT_USER,
   MOCK_USERS,
@@ -75,7 +75,22 @@ import {
   isValidMediaUrl,
   auth,
   onAuthStateChanged,
+  signOut,
+  followUser,
+  unfollowUser,
 } from './services/firebase';
+
+const HomeTab = lazy(() => import('./components/tabs/HomeTab').then(m => ({ default: m.HomeTab })));
+const SearchTab = lazy(() => import('./components/tabs/SearchTab').then(m => ({ default: m.SearchTab })));
+const UploadTab = lazy(() => import('./components/tabs/UploadTab').then(m => ({ default: m.UploadTab })));
+const ChatTab = lazy(() => import('./components/tabs/ChatTab').then(m => ({ default: m.ChatTab })));
+const ProfileTab = lazy(() => import('./components/tabs/ProfileTab').then(m => ({ default: m.ProfileTab })));
+
+const LoadingSpinner = () => (
+  <div className="flex justify-center items-center h-full w-full p-10">
+    <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+  </div>
+);
 
 function AppContent() {
   const {
@@ -109,6 +124,11 @@ function AppContent() {
   };
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
+  const handleAuthenticate = (user: Partial<User>) => {
+    setIsAuthenticated(true);
+    handleUpdateCurrentUser(user);
+  };
 
   const handleUpdateCurrentUser = (updated: Partial<User>) => {
     setCurrentUser((prev) => {
@@ -709,23 +729,23 @@ function AppContent() {
   };
 
   // Follow / Unfollow user
-  const handleToggleFollow = (userId: string) => {
-    setUsers((prevUsers) =>
-      prevUsers.map((u) => {
-        if (u.id === userId) {
-          const isFollowing = !u.isFollowing;
-          const updatedUser = {
-            ...u,
-            isFollowing,
-            followersCount: isFollowing ? u.followersCount + 1 : Math.max(0, u.followersCount - 1),
-          };
-          syncUserProfileToFirestore(updatedUser).catch(console.warn);
-          showToast(isFollowing ? `Following ${u.name}` : `Unfollowed ${u.name}`);
-          return updatedUser;
+  const handleToggleFollow = async (targetUserId: string) => {
+    if (!currentUser || !currentUser.id) return;
+    
+    const isCurrentlyFollowing = users.find(u => u.id === targetUserId)?.isFollowing;
+    
+    try {
+        if (isCurrentlyFollowing) {
+            await unfollowUser(currentUser.id, targetUserId);
+            showToast(`Unfollowed user`);
+        } else {
+            await followUser(currentUser.id, targetUserId);
+            showToast(`Following user`);
         }
-        return u;
-      })
-    );
+    } catch (err) {
+        console.error("Follow error:", err);
+        showToast("Error updating follow status");
+    }
   };
 
   // Open Direct Chat with user
@@ -1416,9 +1436,8 @@ function AppContent() {
     .filter((t) => !(isChatLockEnabled && lockedChatUserIds.includes(t.participant?.id)))
     .reduce((acc, t) => acc + t.unreadCount, 0);
 
-  const handleLogout = () => {
-    setCurrentUser(CURRENT_USER);
-    setIsAuthenticated(false);
+  const handleLogout = async () => {
+    await signOut(auth);
     showToast('Logged out successfully');
   };
 
@@ -1474,7 +1493,7 @@ function AppContent() {
       </AnimatePresence>
 
       {!showSplash && !isAuthenticated ? (
-        <WelcomeAuthScreen theme={theme} />
+        <WelcomeAuthScreen theme={theme} onAuthenticate={handleAuthenticate} />
       ) : (
         !showSplash && (
           <DeviceFrame theme={theme} onThemeChange={handleUpdateTheme}>
@@ -1511,117 +1530,101 @@ function AppContent() {
 
       {/* Main Tab Views */}
       <main className="w-full">
-            {/* Tab 1: Home Feed */}
-            {activeTab === 'home' && (
-              <div className="w-full pb-28 pt-1">
-                {/* Stories Section (Horizontal Scroll) */}
-                <StoriesSection
-                  stories={stories}
-                  currentUser={currentUser}
-                  onSelectStory={(index) => openStoryViewer(index)}
-                  onAddStory={handleAddStory}
-                />
+        <Suspense fallback={<LoadingSpinner />}>
+          {activeTab === 'home' && (
+            <HomeTab
+              stories={stories}
+              currentUser={currentUser}
+              posts={posts}
+              onSelectStory={(index) => openStoryViewer(index)}
+              onAddStory={handleAddStory}
+              onLike={handleLikePost}
+              onDislike={handleDislikePost}
+              onReact={handleReaction}
+              onCommentClick={(p) => openComments(p)}
+              onShareClick={(p) => openShareSheet(p)}
+              onOpenPost={openPostPreview}
+              onUserClick={handleOpenProfile}
+              onAddComment={handleAddComment}
+              onToggleSave={handleToggleSavePost}
+              onDeletePost={handleDeletePost}
+              onHidePost={handleHidePost}
+              onUpdateCaption={handleUpdateCaption}
+              onShowToast={showToast}
+            />
+          )}
 
-                {/* Feed Cards Section */}
-                <div className="mt-3">
-                  {posts.map((post) => (
-                    <FeedCard
-                      key={post.id}
-                      post={post}
-                      currentUser={currentUser}
-                      onLike={handleLikePost}
-                      onDislike={handleDislikePost}
-                      onReact={handleReaction}
-                      onCommentClick={(p) => openComments(p)}
-                      onShareClick={(p) => openShareSheet(p)}
-                      onOpenPost={openPostPreview}
-                      onUserClick={handleOpenProfile}
-                      onAddComment={handleAddComment}
-                      onToggleSave={handleToggleSavePost}
-                      onDeletePost={handleDeletePost}
-                      onHidePost={handleHidePost}
-                      onUpdateCaption={handleUpdateCaption}
-                      onShowToast={showToast}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+          {activeTab === 'search' && (
+            <SearchTab
+              users={users}
+              onToggleFollow={handleToggleFollow}
+              onOpenDirectChat={handleOpenDirectChat}
+              onUserSelect={handleOpenProfile}
+              onShowToast={showToast}
+            />
+          )}
 
-            {/* Tab 2: Search / Discover People */}
-            {activeTab === 'search' && (
-              <SearchPeopleView
-                users={users}
-                onToggleFollow={handleToggleFollow}
-                onOpenDirectChat={handleOpenDirectChat}
-                onUserSelect={handleOpenProfile}
-                onShowToast={showToast}
-              />
-            )}
+          {activeTab === 'upload' && (
+            <UploadTab
+              currentUser={currentUser}
+              onClose={goBack}
+              onPublishPost={handlePublishPost}
+            />
+          )}
 
-            {/* Tab 3: Upload Photos */}
-            {activeTab === 'upload' && (
-              <UploadMediaModal
-                currentUser={currentUser}
-                onClose={goBack}
-                onPublishPost={handlePublishPost}
-              />
-            )}
-
-            {/* Tab 4: 1-on-1 Direct Chat (Full-Screen ChatActivity) */}
-            {activeTab === 'chat' && (
-              <ChatView
-                threads={chatThreads}
-                currentUser={currentUser}
-                activeChatUserId={navState.activeChatUserId}
-                onSelectThread={(threadId) => openChatThread(threadId)}
-                onBackToList={closeChatThread}
-                onBackToHome={goBack}
-                onSendMessage={handleSendMessage}
-                onDeleteMessage={handleDeleteMessage}
-                onReportMessage={handleReportMessage}
-                onMarkMessageSeen={handleMarkMessageSeen}
-                lockedChatUserIds={lockedChatUserIds}
-                chatLockPasscode={chatLockPasscode}
-                isChatLockEnabled={isChatLockEnabled}
-                onShowToast={showToast}
-                onOpenUserProfile={handleOpenProfile}
-                onToggleFollow={handleToggleFollow}
-                onToggleLockChat={handleToggleLockChat}
-                onClearChat={handleClearChatThread}
-                onToggleReaction={handleToggleMessageReaction}
-                onCreateGroup={handleCreateGroup}
-                onUpdateGroup={handleUpdateGroup}
-                onLeaveGroup={handleLeaveGroup}
-                allUsers={users}
-              />
-            )}
+          {activeTab === 'chat' && (
+            <ChatTab
+              threads={chatThreads}
+              currentUser={currentUser}
+              activeChatUserId={navState.activeChatUserId}
+              onSelectThread={(threadId) => openChatThread(threadId)}
+              onBackToList={closeChatThread}
+              onBackToHome={goBack}
+              onSendMessage={handleSendMessage}
+              onDeleteMessage={handleDeleteMessage}
+              onReportMessage={handleReportMessage}
+              onMarkMessageSeen={handleMarkMessageSeen}
+              lockedChatUserIds={lockedChatUserIds}
+              chatLockPasscode={chatLockPasscode}
+              isChatLockEnabled={isChatLockEnabled}
+              onShowToast={showToast}
+              onOpenUserProfile={handleOpenProfile}
+              onToggleFollow={handleToggleFollow}
+              onToggleLockChat={handleToggleLockChat}
+              onClearChat={handleClearChatThread}
+              onToggleReaction={handleToggleMessageReaction}
+              onCreateGroup={handleCreateGroup}
+              onUpdateGroup={handleUpdateGroup}
+              onLeaveGroup={handleLeaveGroup}
+              allUsers={users}
+            />
+          )}
 
             
-            {/* Tab 5: Profile */}
-            {activeTab === 'profile' && (
-              <ProfileView
-                currentUser={currentUser}
-                profileUser={currentProfileUser ? displayedProfileUser : null}
-                userPosts={userPosts}
-                savedPosts={savedPosts.length > 0 ? savedPosts : posts.slice(1, 4)}
-                onOpenSettings={() => openSettings('main')}
-                onOpenThemeStudio={handleOpenThemeStudio}
-                onUpdateUser={(updated) => {
-                  handleUpdateCurrentUser(updated);
-                }}
-                theme={theme}
-                onUpdateTheme={handleUpdateTheme}
-                onShowToast={showToast}
-                onBack={popUserProfile}
-                onToggleFollow={handleToggleFollow}
-                onOpenDirectChat={handleOpenDirectChat}
-                lockedChatUserIds={lockedChatUserIds}
-                onToggleLockChat={handleToggleLockChat}
-                onClearChat={handleClearChatThread}
-              />
-            )}
-          </main>
+          {activeTab === 'profile' && (
+            <ProfileTab
+              currentUser={currentUser}
+              profileUser={currentProfileUser ? displayedProfileUser : null}
+              userPosts={userPosts}
+              savedPosts={savedPosts.length > 0 ? savedPosts : posts.slice(1, 4)}
+              onOpenSettings={() => openSettings('main')}
+              onOpenThemeStudio={handleOpenThemeStudio}
+              onUpdateUser={(updated) => {
+                handleUpdateCurrentUser(updated);
+              }}
+              theme={theme}
+              onUpdateTheme={handleUpdateTheme}
+              onShowToast={showToast}
+              onBack={popUserProfile}
+              onToggleFollow={handleToggleFollow}
+              onOpenDirectChat={handleOpenDirectChat}
+              lockedChatUserIds={lockedChatUserIds}
+              onToggleLockChat={handleToggleLockChat}
+              onClearChat={handleClearChatThread}
+            />
+          )}
+        </Suspense>
+      </main>
 
           {/* Floating Bottom Navigation (Hidden when in full-screen ChatActivity) */}
           {activeTab !== 'chat' && (

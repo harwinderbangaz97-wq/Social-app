@@ -12,9 +12,9 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js" defer></script>
   <style>
     body, html { margin:0; padding:0; width:100%; height:100dvh; background:#f4f7fb; font-family:sans-serif; touch-action:manipulation; overscroll-behavior:none; }
     ::-webkit-scrollbar { display:none; }
@@ -55,62 +55,84 @@
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [otp, setOtp] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
     const [confirmResult, setConfirmResult] = useState(null);
-    const confirmResultRef = useRef(null);
     const recaptchaVerifierRef = useRef(null);
 
-    // Keep the refs in sync with the state
     useEffect(() => {
-        confirmResultRef.current = confirmResult;
-        
-        // Initialize RecaptchaVerifier once
         if (!recaptchaVerifierRef.current) {
           recaptchaVerifierRef.current = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
             size: 'invisible'
           });
         }
-    }, [confirmResult]);
+        return () => {
+          if (recaptchaVerifierRef.current) {
+            recaptchaVerifierRef.current.clear();
+            recaptchaVerifierRef.current = null;
+          }
+        };
+    }, []);
 
-    const sendOTP = async () => runAuth(async () => {
-      if (!recaptchaVerifierRef.current) throw new Error("reCAPTCHA not initialized");
-      const result = await auth.signInWithPhoneNumber(phone, recaptchaVerifierRef.current);
-      setConfirmResult(result);
-    });
+    const sendOTP = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (!recaptchaVerifierRef.current) throw new Error("reCAPTCHA not initialized");
+        const result = await auth.signInWithPhoneNumber(firebase.auth.PhoneAuthProvider.PROVIDER_ID, phone, recaptchaVerifierRef.current);
+        setConfirmResult(result);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     const verifyOTP = async () => {
       setLoading(true);
       setError(null);
-      console.log("verifyOTP called, otp:", otp, "confirmResult:", confirmResultRef.current);
       try {
-        if (!confirmResultRef.current) throw new Error("Please send OTP first");
-        console.log("Calling confirmResult.confirm...");
+        if (!confirmResult) throw new Error("Please send OTP first");
         
-        const userCredential = await confirmResultRef.current.confirm(otp);
-        console.log("confirmResult.confirm successful, userCredential:", userCredential);
+        const userCredential = await confirmResult.confirm(otp);
         
         if (isSignup && name) {
-          console.log("Updating profile with name:", name);
           await userCredential.user.updateProfile({ displayName: name });
-          console.log("Profile updated");
         }
-        
-        // Let onAuthStateChanged handle the unmount
       } catch (e) {
-        console.error("OTP verification error object:", e);
-        if (e.code) console.error("Error code:", e.code);
-        if (e.message) console.error("Error message:", e.message);
         setError(e.message);
         setLoading(false);
       }
     };
 
-    const emailLogin = () => runAuth(() => auth.signInWithEmailAndPassword(email, password));
-    const emailSignup = () => runAuth(async () => {
+    const emailLogin = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        await auth.signInWithEmailAndPassword(email, password);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    const emailSignup = async () => {
+      setLoading(true);
+      setError(null);
+      try {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         await userCredential.user.updateProfile({ displayName: name });
         await userCredential.user.sendEmailVerification();
         alert("Verification email sent!");
-    });
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     return (
       <div className="h-screen flex flex-col items-center justify-center p-6 gap-4 overflow-y-auto">

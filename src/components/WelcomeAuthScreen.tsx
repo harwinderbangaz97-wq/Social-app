@@ -41,6 +41,7 @@ import {
 
 interface WelcomeAuthScreenProps {
   onContinueAsGuest?: () => void;
+  onAuthenticate: (user: Partial<User>) => void;
   theme?: ThemeMode;
 }
 
@@ -49,6 +50,7 @@ type SignupMethod = 'email' | 'mobile';
 
 export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
   onContinueAsGuest,
+  onAuthenticate,
 }) => {
   const [viewMode, setViewMode] = useState<AuthViewMode>('welcome');
   const [signupMethod, setSignupMethod] = useState<SignupMethod>('email');

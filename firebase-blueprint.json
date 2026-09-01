@@ -1,5 +1,16 @@
 {
   "entities": {
+    "follows": {
+      "title": "Follow",
+      "description": "User follow relationships",
+      "type": "object",
+      "properties": {
+        "followerUid": { "type": "string" },
+        "followingUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerUid", "followingUid", "createdAt"]
+    },
     "users": {
       "title": "User",
       "description": "User profile records",

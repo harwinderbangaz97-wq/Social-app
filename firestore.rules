@@ -16,10 +16,18 @@ service cloud.firestore {
         (request.auth.token.role == 'admin' || request.auth.token.role == 'moderator' || request.auth.token.admin == true);
     }
 
+    // Follow relationships
+    match /follows/{followId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.followerUid;
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.followerUid;
+    }
+
     // Public / User Profiles
     match /users/{userId} {
-      allow read: if true;
-      allow create, update: if true;
+      allow read: if isAuthenticated();
+      allow update: if isOwner(userId);
+      allow create: if isAuthenticated() && request.auth.uid == userId;
       allow delete: if isOwner(userId) || isAdmin();
     }
 
