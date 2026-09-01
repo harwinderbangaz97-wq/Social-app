@@ -57,15 +57,23 @@
     const [otp, setOtp] = useState('');
     const [confirmResult, setConfirmResult] = useState(null);
     const confirmResultRef = useRef(null);
+    const recaptchaVerifierRef = useRef(null);
 
-    // Keep the ref in sync with the state
+    // Keep the refs in sync with the state
     useEffect(() => {
         confirmResultRef.current = confirmResult;
+        
+        // Initialize RecaptchaVerifier once
+        if (!recaptchaVerifierRef.current) {
+          recaptchaVerifierRef.current = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+            size: 'invisible'
+          });
+        }
     }, [confirmResult]);
 
     const sendOTP = async () => runAuth(async () => {
-      if (!recaptchaVerifier.current) throw new Error("reCAPTCHA not initialized");
-      const result = await auth.signInWithPhoneNumber(phone, recaptchaVerifier.current);
+      if (!recaptchaVerifierRef.current) throw new Error("reCAPTCHA not initialized");
+      const result = await auth.signInWithPhoneNumber(phone, recaptchaVerifierRef.current);
       setConfirmResult(result);
     });
 

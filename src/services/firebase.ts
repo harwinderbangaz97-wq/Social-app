@@ -290,11 +290,11 @@ export const sendFirebasePhoneOtp = async (
       console.warn('Recaptcha background verify notice:', renderErr);
     }
 
-    // 10-second timeout race for signInWithPhoneNumber to prevent hanging indefinitely
+    // 30-second timeout race for signInWithPhoneNumber to prevent hanging indefinitely
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         reject(new Error('Verification timed out. Please try again.'));
-      }, 10000);
+      }, 30000);
     });
 
     const confirmationResult = await Promise.race([
