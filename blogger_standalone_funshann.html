@@ -72,13 +72,13 @@
     const verifyOTP = async () => {
       setLoading(true);
       setError(null);
-      console.log("verifyOTP called, otp:", otp, "confirmResultRef exists:", !!confirmResultRef.current);
+      console.log("verifyOTP called, otp:", otp, "confirmResult:", confirmResultRef.current);
       try {
         if (!confirmResultRef.current) throw new Error("Please send OTP first");
         console.log("Calling confirmResult.confirm...");
         
         const userCredential = await confirmResultRef.current.confirm(otp);
-        console.log("confirmResult.confirm successful, user:", userCredential.user.uid);
+        console.log("confirmResult.confirm successful, userCredential:", userCredential);
         
         if (isSignup && name) {
           console.log("Updating profile with name:", name);
@@ -88,7 +88,9 @@
         
         // Let onAuthStateChanged handle the unmount
       } catch (e) {
-        console.error("OTP verification error:", e);
+        console.error("OTP verification error object:", e);
+        if (e.code) console.error("Error code:", e.code);
+        if (e.message) console.error("Error message:", e.message);
         setError(e.message);
         setLoading(false);
       }
