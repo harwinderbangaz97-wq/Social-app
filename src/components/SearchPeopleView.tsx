@@ -40,7 +40,7 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
 
     if (!matchesQuery) return false;
 
-    if (activeCategory === 'contacts') return user.id === 'user-2' || user.id === 'user-3' || user.id === 'user-5';
+    if (activeCategory === 'contacts') return Boolean(user.mobileNumber);
     if (activeCategory === 'verified') return user.isVerified;
     if (activeCategory === 'creators') return user.followersCount > 20000;
     if (activeCategory === 'following') return user.isFollowing;

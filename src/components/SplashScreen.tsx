@@ -31,16 +31,15 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
         className="flex flex-col items-center justify-center text-center px-6"
       >
         {/* Center 3D Circular Medallion with Funshann Logo */}
-        <div className="w-56 h-56 rounded-full bg-gradient-to-b from-[#FFFFFF] to-[#F4F7FB] shadow-[0_24px_50px_-8px_rgba(100,116,139,0.32),0_10px_20px_-4px_rgba(148,163,184,0.2),inset_0_2px_6px_rgba(255,255,255,0.95)] flex items-center justify-center border border-white/80 p-2 mb-6">
-          <div className="flex items-center justify-center tracking-tight font-extrabold text-[2.8rem] leading-none select-none">
-            <span className="text-[#1E242E] drop-shadow-[0_4px_6px_rgba(0,0,0,0.35)] relative font-black">
-              Fun
-            </span>
-            <span className="text-[#2F7CF6] drop-shadow-[0_4px_10px_rgba(37,99,235,0.45)] relative font-black ml-[1px]">
-              shann
-              <span className="absolute -top-1.5 -right-3 w-3 h-3 rounded-full bg-gradient-to-br from-[#60A5FA] to-[#1D4ED8] shadow-[0_3px_6px_rgba(37,99,235,0.45),inset_0_1px_2px_rgba(255,255,255,0.7)] inline-block" />
-            </span>
-          </div>
+        <div className="w-56 h-56 rounded-full bg-gradient-to-b from-[#FFFFFF] to-[#F4F7FB] shadow-[0_24px_50px_-8px_rgba(100,116,139,0.32),0_10px_20px_-4px_rgba(148,163,184,0.2),inset_0_2px_6px_rgba(255,255,255,0.95)] flex items-center justify-center border border-white/80 p-3 mb-6 overflow-hidden">
+          <img
+            src="/logo.png"
+            alt="Funshann Official Logo"
+            className="w-full h-full object-cover rounded-full shadow-inner"
+            onError={(e) => {
+              e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23ffffff'/%3E%3Ctext x='50' y='68' font-size='55' font-weight='bold' text-anchor='middle' fill='%23000000' font-family='sans-serif'%3EF%3C/text%3E%3C/svg%3E";
+            }}
+          />
         </div>
 
         <motion.div

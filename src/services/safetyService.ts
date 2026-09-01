@@ -18,75 +18,9 @@ const STORAGE_BANNED_USERS = 'funshann_banned_users';
 const STORAGE_USER_WARNINGS = 'funshann_user_warnings';
 
 // Initial seed reports to showcase real admin/moderator dashboard capability
-export const INITIAL_SEED_REPORTS: UniversalReportItem[] = [
-  {
-    id: 'rep_seed_1',
-    contentType: 'post',
-    contentId: 'post_spammer_ad',
-    targetUserId: 'u_spammer_99',
-    targetUsername: 'crypto_giveaway_bot',
-    targetUserAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-    reporterUserId: 'u_user_hidden',
-    reasonKey: 'scam_fraud',
-    reasonLabel: 'Scam, phishing or financial fraud',
-    details: 'User is running automated bot scripts DMing phishing links to random creators.',
-    snippet: '🔥 Instant 5.0 ETH Giveaway! Connect your seed phrase to claim now...',
-    mediaUrl: 'https://images.unsplash.com/photo-1622979135225-d2ba269bc1df?w=600&auto=format&fit=crop&q=80',
-    submittedAt: '2026-08-19T10:14:00Z',
-    status: 'pending_review',
-  },
-  {
-    id: 'rep_seed_2',
-    contentType: 'comment',
-    contentId: 'comment_troll_harass',
-    postId: 'post_1',
-    targetUserId: 'u_troll_42',
-    targetUsername: 'phantom_shadow',
-    targetUserAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&auto=format&fit=crop&q=80',
-    reporterUserId: 'u_user_hidden_2',
-    reasonKey: 'harassment',
-    reasonLabel: 'Harassment or bullying',
-    details: 'Repeated offensive remarks directed at creator photography.',
-    snippet: 'This photo looks terrible, delete your account already!',
-    submittedAt: '2026-08-19T14:32:00Z',
-    status: 'under_investigation',
-  },
-  {
-    id: 'rep_seed_3',
-    contentType: 'profile',
-    contentId: 'u_impersonator_vip',
-    targetUserId: 'u_impersonator_vip',
-    targetUsername: 'elena_rostova_official_vip',
-    targetUserAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-    reporterUserId: 'u_user_hidden_3',
-    reasonKey: 'impersonation',
-    reasonLabel: 'Impersonation',
-    details: 'Copying Elena Rostova profile image and bio to deceive followers.',
-    snippet: 'Elena Rostova (Official Backup) • DM for private exclusive sessions',
-    submittedAt: '2026-08-18T18:05:00Z',
-    status: 'action_taken',
-    resolvedAt: '2026-08-19T09:12:00Z',
-    resolvedBy: 'Funshann Safety Lead',
-    resolutionNotes: 'Account suspended permanently for impersonating verified artist.',
-  },
-];
+export const INITIAL_SEED_REPORTS: UniversalReportItem[] = [];
 
-export const INITIAL_MODERATION_LOGS: ModerationLogEntry[] = [
-  {
-    id: 'log_seed_1',
-    reportId: 'rep_seed_3',
-    action: 'ban_account',
-    moderatorId: 'mod_safety_admin',
-    moderatorName: 'Senior Safety Lead',
-    targetUserId: 'u_impersonator_vip',
-    targetUsername: 'elena_rostova_official_vip',
-    contentType: 'profile',
-    contentId: 'u_impersonator_vip',
-    reason: 'Impersonation of verified creator',
-    notes: 'Permanent hardware and account suspension enforced.',
-    timestamp: '2026-08-19T09:12:00Z',
-  },
-];
+export const INITIAL_MODERATION_LOGS: ModerationLogEntry[] = [];
 
 /**
  * Retrieve all reports from storage

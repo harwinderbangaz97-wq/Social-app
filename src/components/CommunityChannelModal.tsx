@@ -165,13 +165,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
   const [newMemberRole, setNewMemberRole] = useState<'Member' | 'Admin' | 'Moderator'>('Member');
   const [contactsSearchQuery, setContactsSearchQuery] = useState('');
 
-  const SUGGESTED_CONTACTS = [
-    { id: 'sug1', name: 'Emily Chen', username: '@emily_c', avatarBg: 'from-pink-500 to-rose-500' },
-    { id: 'sug2', name: 'Marcus Vance', username: '@marcus_v', avatarBg: 'from-cyan-500 to-blue-500' },
-    { id: 'sug3', name: 'Priya Sharma', username: '@priya_s', avatarBg: 'from-amber-500 to-orange-500' },
-    { id: 'sug4', name: 'David Miller', username: '@david_m', avatarBg: 'from-emerald-500 to-teal-500' },
-    { id: 'sug5', name: 'Sarah Connor', username: '@sarah_c', avatarBg: 'from-purple-500 to-indigo-500' },
-  ];
+
 
   const handleAddMember = (nameToAdd: string, roleToAdd: 'Member' | 'Admin' | 'Moderator' = 'Member') => {
     const cleanName = nameToAdd.trim();
@@ -1479,71 +1473,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                 </button>
               </form>
 
-              {/* Suggested Contacts List */}
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                    Suggested Contacts
-                  </span>
-                  <div className="relative">
-                    <Search className="w-3 h-3 text-slate-400 absolute left-2 top-2" />
-                    <input
-                      type="text"
-                      value={contactsSearchQuery}
-                      onChange={(e) => setContactsSearchQuery(e.target.value)}
-                      placeholder="Filter..."
-                      className="bg-slate-100 pl-6 pr-2 py-1 text-[10px] rounded-lg w-28 focus:outline-none"
-                    />
-                  </div>
-                </div>
 
-                <div className="space-y-1.5 max-h-[160px] overflow-y-auto no-scrollbar">
-                  {SUGGESTED_CONTACTS
-                    .filter(
-                      (c) =>
-                        c.name.toLowerCase().includes(contactsSearchQuery.toLowerCase()) ||
-                        c.username.toLowerCase().includes(contactsSearchQuery.toLowerCase())
-                    )
-                    .map((contact) => {
-                      const isAlreadyAdded = rosterMembers.some(
-                        (m) => m.name.toLowerCase() === contact.name.toLowerCase()
-                      );
-
-                      return (
-                        <div
-                          key={contact.id}
-                          className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100 hover:bg-slate-100/80 transition"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className={`w-8 h-8 rounded-full bg-gradient-to-tr ${contact.avatarBg} text-white font-bold flex items-center justify-center text-xs shadow-2xs flex-shrink-0`}
-                            >
-                              {contact.name.charAt(0)}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-slate-800 truncate">{contact.name}</p>
-                              <span className="text-[10px] text-slate-400 block">{contact.username}</span>
-                            </div>
-                          </div>
-
-                          {isAlreadyAdded ? (
-                            <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-[10px] font-bold border border-emerald-200 flex items-center gap-1">
-                              <UserCheck className="w-3 h-3" /> Member
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleAddMember(contact.name, 'Member')}
-                              className="px-2.5 py-1 rounded-lg bg-white border border-[#5B9DFF]/40 text-[#5B9DFF] text-[11px] font-bold hover:bg-[#5B9DFF] hover:text-white transition cursor-pointer shadow-2xs flex items-center gap-1"
-                            >
-                              <Plus className="w-3 h-3" /> Add
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
             </motion.div>
           </div>
         )}

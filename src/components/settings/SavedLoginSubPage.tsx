@@ -30,35 +30,7 @@ interface DeviceSession {
   ipAddressMasked: string;
 }
 
-const INITIAL_SESSIONS: DeviceSession[] = [
-  {
-    id: 'dev_1',
-    deviceName: 'Google Pixel 9 Pro (This Device)',
-    deviceType: 'phone',
-    location: 'Barcelona, Spain',
-    lastActive: 'Active now',
-    isCurrent: true,
-    ipAddressMasked: '192.168.***.***',
-  },
-  {
-    id: 'dev_2',
-    deviceName: 'MacBook Pro 16" (Chrome Browser)',
-    deviceType: 'desktop',
-    location: 'Barcelona, Spain',
-    lastActive: 'Yesterday at 18:40',
-    isCurrent: false,
-    ipAddressMasked: '84.120.***.***',
-  },
-  {
-    id: 'dev_3',
-    deviceName: 'Samsung Galaxy Tab S9',
-    deviceType: 'tablet',
-    location: 'Madrid, Spain',
-    lastActive: 'August 10, 2026',
-    isCurrent: false,
-    ipAddressMasked: '83.45.***.***',
-  },
-];
+const INITIAL_SESSIONS: DeviceSession[] = [];
 
 export const SavedLoginSubPage: React.FC<SavedLoginSubPageProps> = ({ onShowToast }) => {
   const [isSavedLoginEnabled, setIsSavedLoginEnabled] = useState<boolean>(() => {

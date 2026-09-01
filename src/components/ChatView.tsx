@@ -1175,7 +1175,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             >
               <div className="relative w-10 h-10 rounded-full neu-raised p-0.5 flex-shrink-0 group-hover:scale-105 transition-transform">
                 <img
-                  src={(activeThread.isGroup ? activeThread.groupAvatar || '' : activeThread.participant?.avatar || '')}
+                  src={activeThread.isGroup ? (activeThread.groupAvatar || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80') : (activeThread.participant?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80')}
                   alt={(activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '')}
                   className="w-full h-full rounded-full object-cover"
                 />

@@ -25,10 +25,18 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         <button
           id="app-logo-btn"
           onClick={onLogoClick}
-          className="text-left focus:outline-none group flex items-center gap-2"
+          className="text-left focus:outline-none group flex items-center gap-2.5"
         >
+          <img
+            src="/logo.png"
+            alt="Funshann"
+            className="w-10 h-10 rounded-full object-cover shadow-sm border border-slate-200/80"
+            onError={(e) => {
+              e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23ffffff'/%3E%3Ctext x='50' y='68' font-size='55' font-weight='bold' text-anchor='middle' fill='%23000000' font-family='sans-serif'%3EF%3C/text%3E%3C/svg%3E";
+            }}
+          />
           <div className="flex flex-col">
-            <span className="text-[26px] font-black tracking-tight text-slate-850 font-['Outfit'] flex items-center gap-1.5 drop-shadow-sm">
+            <span className="text-[24px] font-black tracking-tight text-slate-850 font-['Outfit'] flex items-center gap-1.5 drop-shadow-sm">
               <span className="text-slate-800">Fun</span>
               <span className="text-[#5B9DFF]">shann</span>
               <span className="inline-block w-2 h-2 rounded-full bg-[#5B9DFF] mb-1"></span>

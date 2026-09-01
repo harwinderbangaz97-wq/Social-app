@@ -398,7 +398,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   {/* Circular Avatar Preview with Neumorphic Ring */}
                   <div className="w-24 h-24 rounded-full neu-raised p-1.5 transition-transform group-hover:scale-105">
                     <img
-                      src={avatar || currentUser.avatar}
+                      src={avatar || currentUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
                       alt="Profile Avatar Preview"
                       className="w-full h-full rounded-full object-cover"
                     />

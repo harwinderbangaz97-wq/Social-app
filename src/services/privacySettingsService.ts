@@ -38,26 +38,7 @@ export const DEFAULT_WHO_CAN_CONTACT: WhoCanContactSettings = {
   allowGroupInvites: 'following',
 };
 
-export const INITIAL_BLOCKED_USERS: BlockedUserItem[] = [
-  {
-    id: 'block_1',
-    userId: 'u_spammer_99',
-    name: 'Crypto Boost Daily',
-    username: 'crypto_giveaway_bot',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-    blockedAt: '2026-07-28T14:22:00Z',
-    reason: 'Unsolicited commercial spam',
-  },
-  {
-    id: 'block_2',
-    userId: 'u_troll_42',
-    name: 'Anonymous Phantom',
-    username: 'phantom_shadow',
-    avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&auto=format&fit=crop&q=80',
-    blockedAt: '2026-08-02T09:10:00Z',
-    reason: 'Harassment & offensive comments',
-  },
-];
+export const INITIAL_BLOCKED_USERS: BlockedUserItem[] = [];
 
 // Public Profile Settings
 export const getPublicProfileSettings = (): PublicProfileSettings => {

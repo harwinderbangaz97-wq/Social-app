@@ -1,12 +1,6 @@
 const STORAGE_SEARCH_HISTORY = 'funshann_search_history';
 
-export const INITIAL_SEARCH_HISTORY: string[] = [
-  'Modern Architecture Barcelona',
-  '@sophiachen',
-  'Kyoto Pottery Ceramicists',
-  '35mm analog film aesthetic',
-  'Nordic Minimalism',
-];
+export const INITIAL_SEARCH_HISTORY: string[] = [];
 
 export const getSearchHistory = (): string[] => {
   try {

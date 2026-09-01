@@ -97,9 +97,14 @@ export const AndroidSystemSettingsModal: React.FC<AndroidSystemSettingsModalProp
         <div className="p-5 overflow-y-auto space-y-6 flex-1 text-slate-800 dark:text-slate-100">
           {/* App Header Card */}
           <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700 shadow-xs">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#5B9DFF] to-blue-400 flex items-center justify-center text-white font-black text-xl shadow-md">
-              F
-            </div>
+            <img
+              src="/logo.png"
+              alt="Funshann"
+              className="w-12 h-12 rounded-2xl object-cover shadow-sm border border-slate-200"
+              onError={(e) => {
+                e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23ffffff'/%3E%3Ctext x='50' y='68' font-size='55' font-weight='bold' text-anchor='middle' fill='%23000000' font-family='sans-serif'%3EF%3C/text%3E%3C/svg%3E";
+              }}
+            />
             <div>
               <h4 className="font-bold text-sm text-slate-900 dark:text-white font-['Outfit']">Funshann</h4>
               <p className="text-xs text-slate-500 dark:text-slate-400">Version 2.4.0 &bull; com.funshann.app</p>

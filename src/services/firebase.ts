@@ -26,6 +26,7 @@ import {
   runTransaction,
   increment,
   query,
+  where,
   limit,
   orderBy,
   onSnapshot,
@@ -754,15 +755,76 @@ export const normalizeNotification = (raw: any): NotificationItem => {
 };
 
 // 1. User Profiles & User Directory
+export const checkIfPhoneRegistered = async (rawPhone: string): Promise<boolean> => {
+  try {
+    await ensureFirebaseAuth();
+    const formatted = formatPhoneNumber(rawPhone);
+    if (!formatted) return false;
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('mobileNumber', '==', formatted));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) return true;
+
+    const qRaw = query(usersRef, where('mobileNumber', '==', rawPhone.trim()));
+    const snapshotRaw = await getDocs(qRaw);
+    if (!snapshotRaw.empty) return true;
+
+    return false;
+  } catch (err) {
+    console.warn('Error checking phone registration:', err);
+    return false;
+  }
+};
+
+export const getUserProfileByPhone = async (rawPhone: string): Promise<User | null> => {
+  try {
+    await ensureFirebaseAuth();
+    const formatted = formatPhoneNumber(rawPhone);
+    const usersRef = collection(db, 'users');
+
+    if (formatted) {
+      const q = query(usersRef, where('mobileNumber', '==', formatted), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return normalizeUser(snap.docs[0].data());
+      }
+    }
+
+    const qRaw = query(usersRef, where('mobileNumber', '==', rawPhone.trim()), limit(1));
+    const snapRaw = await getDocs(qRaw);
+    if (!snapRaw.empty) {
+      return normalizeUser(snapRaw.docs[0].data());
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('Error getting user profile by phone:', err);
+    return null;
+  }
+};
+
 export const syncUserProfileToFirestore = async (user: Partial<User>): Promise<void> => {
   try {
     await ensureFirebaseAuth();
     if (!user || !user.id) return;
     const userRef = doc(db, 'users', user.id);
-    await setDoc(userRef, {
-      ...user,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      const existingData = snap.data();
+      await setDoc(userRef, {
+        ...existingData,
+        ...user,
+        id: user.id,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } else {
+      await setDoc(userRef, {
+        ...user,
+        id: user.id,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
   } catch (error) {
     console.warn('Firestore user profile sync fallback to local:', error);
   }
@@ -790,15 +852,16 @@ export const subscribeToUsers = (callback: (users: User[]) => void): (() => void
     const unsubscribe = onSnapshot(
       usersRef,
       (snapshot) => {
-        const result: User[] = [];
+        const map = new Map<string, User>();
         snapshot.forEach((docSnap) => {
           if (docSnap.exists()) {
-            result.push(normalizeUser(docSnap.data()));
+            const u = normalizeUser({ ...docSnap.data(), id: docSnap.id });
+            if (u && u.id) {
+              map.set(u.id, u);
+            }
           }
         });
-        if (result.length > 0) {
-          callback(result);
-        }
+        callback(Array.from(map.values()));
       },
       (error) => {
         console.warn('Users real-time listener warning:', error);

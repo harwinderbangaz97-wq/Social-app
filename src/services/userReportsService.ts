@@ -4,43 +4,7 @@ import { syncUserReportToFirestore, syncBugReportToFirestore } from './firebase'
 const STORAGE_USER_REPORTS = 'funshann_user_submitted_reports';
 const STORAGE_BUG_REPORTS = 'funshann_bug_reports';
 
-export const INITIAL_USER_REPORTS: UserReportItem[] = [
-  {
-    id: 'rep_101',
-    reportedUserId: 'u_spammer_99',
-    reportedUserName: 'Crypto Boost Daily',
-    reportedUsername: 'crypto_giveaway_bot',
-    category: 'spam',
-    status: 'action_taken',
-    submittedAt: '2026-07-28T14:20:00Z',
-    resolvedAt: '2026-07-28T16:05:00Z',
-    resolutionNotes: 'Account restricted for mass automated direct messaging violation.',
-    evidenceSnippet: 'Hey! Claim your 5.0 ETH welcome prize here...',
-  },
-  {
-    id: 'rep_102',
-    reportedUserId: 'u_troll_42',
-    reportedUserName: 'Anonymous Phantom',
-    reportedUsername: 'phantom_shadow',
-    category: 'harassment',
-    status: 'resolved',
-    submittedAt: '2026-08-02T09:05:00Z',
-    resolvedAt: '2026-08-02T11:30:00Z',
-    resolutionNotes: 'Comments removed and user issued a formal Community Strike 1 warning.',
-    evidenceSnippet: 'Harassing commentary on Mediterranean coastline photograph.',
-  },
-  {
-    id: 'rep_103',
-    reportedUserId: 'u_fake_store',
-    reportedUserName: 'Luxury Fashion Clearance Outlet',
-    reportedUsername: 'luxury_clearance_official',
-    category: 'scam',
-    status: 'under_review',
-    submittedAt: '2026-08-14T19:40:00Z',
-    resolutionNotes: 'Currently undergoing trust & safety fraud evaluation.',
-    evidenceSnippet: 'Unverified external payment link in profile bio.',
-  },
-];
+export const INITIAL_USER_REPORTS: UserReportItem[] = [];
 
 export const getUserReports = (): UserReportItem[] => {
   try {

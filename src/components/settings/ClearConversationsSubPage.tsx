@@ -162,7 +162,7 @@ export const ClearConversationsSubPage: React.FC<ClearConversationsSubPageProps>
                     </button>
 
                     <img
-                      src={thread.participant.avatar}
+                      src={thread.participant.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                       alt={thread.participant.name}
                       className="w-10 h-10 rounded-full object-cover neu-raised flex-shrink-0"
                     />

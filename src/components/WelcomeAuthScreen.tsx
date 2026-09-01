@@ -29,6 +29,8 @@ import {
   ConfirmationResult,
   syncUserProfileToFirestore,
   getUserProfileFromFirestore,
+  getUserProfileByPhone,
+  checkIfPhoneRegistered,
   clearRecaptchaVerifier,
   signInWithPopup,
   GoogleAuthProvider,
@@ -54,22 +56,34 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<AuthViewMode>('welcome');
   const [signupMethod, setSignupMethod] = useState<SignupMethod>('email');
+  const [signinMethod, setSigninMethod] = useState<'email' | 'mobile'>('email');
   const [showPassword, setShowPassword] = useState(false);
 
   // Form Fields
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [signupCountryCode, setSignupCountryCode] = useState('+91');
+  const [signinCountryCode, setSigninCountryCode] = useState('+91');
   const [otpCode, setOtpCode] = useState('');
   const [password, setPassword] = useState('');
 
-  // Firebase Phone Auth States
+  // Firebase Phone Auth States (Signup)
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [formattedNumberDisplay, setFormattedNumberDisplay] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Firebase Phone Auth States (Signin)
+  const [isSigninOtpSent, setIsSigninOtpSent] = useState(false);
+  const [signinConfirmationResult, setSigninConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [signinFormattedNumberDisplay, setSigninFormattedNumberDisplay] = useState('');
+  const [isSigninSendingOtp, setIsSigninSendingOtp] = useState(false);
+  const [isSigninVerifyingOtp, setIsSigninVerifyingOtp] = useState(false);
+  const [signinOtpCode, setSigninOtpCode] = useState('');
+  const [signinResendCooldown, setSigninResendCooldown] = useState(0);
 
   // General Error / Feedback Message
   const [errorMessage, setErrorMessage] = useState('');
@@ -85,6 +99,31 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
     }
     return () => clearTimeout(timer);
   }, [resendCooldown]);
+
+  // Signin Resend Countdown Timer
+  useEffect(() => {
+    let timer: any;
+    if (signinResendCooldown > 0) {
+      timer = setTimeout(() => setSigninResendCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [signinResendCooldown]);
+
+  const handleAutoFillOtp = async (isSignin: boolean) => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const digits = text.replace(/\D/g, '').slice(0, 6);
+      if (digits.length === 6) {
+        if (isSignin) setSigninOtpCode(digits);
+        else setOtpCode(digits);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+    if (isSignin) setSigninOtpCode('123456');
+    else setOtpCode('123456');
+  };
 
   // Clean up any active reCAPTCHA verifiers when unmounting
   useEffect(() => {
@@ -163,8 +202,11 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       await sendEmailVerification(userCredential.user);
       
-      const userProfile: Partial<User> = {
-        id: userCredential.user.uid,
+      const userId = userCredential.user.uid;
+      const existingProfile = await getUserProfileFromFirestore(userId);
+      
+      const userProfile: Partial<User> = existingProfile || {
+        id: userId,
         name: fullName.trim(),
         username: email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, ''),
         email: email.trim(),
@@ -177,7 +219,16 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
       setViewMode('signin');
     } catch (error: any) {
       console.error('Email Signup error:', error);
-      setErrorMessage(error?.message || 'Email Signup failed.');
+      if (
+        error?.code === 'auth/email-already-in-use' ||
+        error?.message?.includes('email-already-in-use') ||
+        error?.message?.includes('already in use')
+      ) {
+        setErrorMessage('An account already exists with this email. Please log in.');
+        setViewMode('signin');
+      } else {
+        setErrorMessage(error?.message || 'Email Signup failed.');
+      }
     }
   };
 
@@ -203,18 +254,27 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
     }
   };
 
-  // Send real SMS OTP via Firebase Authentication
+  // Send real SMS OTP via Firebase Authentication (Signup)
   const handleSendOtp = async () => {
     setErrorMessage('');
-    if (!phone || phone.trim().length < 8) {
-      setErrorMessage('Please enter a valid 10-digit mobile number.');
+    if (!phone || phone.trim().length < 7) {
+      setErrorMessage('Please enter a valid mobile number.');
       return;
     }
 
     setIsSendingOtp(true);
     try {
-      const formatted = formatPhoneNumber(phone);
-      const res = await sendFirebasePhoneOtp(phone, 'send-otp-btn');
+      const fullPhone = phone.trim().startsWith('+') ? phone.trim() : `${signupCountryCode}${phone.trim()}`;
+      const isRegistered = await checkIfPhoneRegistered(fullPhone);
+      if (isRegistered) {
+        setErrorMessage('An account already exists with this phone number. Please log in.');
+        setViewMode('signin');
+        setIsSendingOtp(false);
+        return;
+      }
+
+      const formatted = formatPhoneNumber(fullPhone);
+      const res = await sendFirebasePhoneOtp(fullPhone, 'send-otp-btn');
 
       if (res.success && res.confirmationResult) {
         setConfirmationResult(res.confirmationResult);
@@ -229,6 +289,96 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
       setErrorMessage(err?.message || 'An unexpected error occurred while sending SMS code.');
     } finally {
       setIsSendingOtp(false);
+    }
+  };
+
+  // Sign-in Send SMS OTP
+  const handleSigninSendOtp = async () => {
+    setErrorMessage('');
+    if (!phone || phone.trim().length < 7) {
+      setErrorMessage('Please enter a valid mobile number.');
+      return;
+    }
+
+    setIsSigninSendingOtp(true);
+    try {
+      const fullPhone = phone.trim().startsWith('+') ? phone.trim() : `${signinCountryCode}${phone.trim()}`;
+      const isRegistered = await checkIfPhoneRegistered(fullPhone);
+      if (!isRegistered) {
+        setErrorMessage('This phone number is not registered. Please create an account.');
+        setIsSigninSendingOtp(false);
+        return;
+      }
+
+      const formatted = formatPhoneNumber(fullPhone);
+      const res = await sendFirebasePhoneOtp(fullPhone, 'signin-otp-btn');
+
+      if (res.success && res.confirmationResult) {
+        setSigninConfirmationResult(res.confirmationResult);
+        setSigninFormattedNumberDisplay(formatted);
+        setIsSigninOtpSent(true);
+        setSigninResendCooldown(30);
+        setSigninOtpCode('');
+      } else {
+        setErrorMessage(res.error || 'Failed to send SMS verification code. Please check your number.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'An unexpected error occurred while sending SMS code.');
+    } finally {
+      setIsSigninSendingOtp(false);
+    }
+  };
+
+  // Sign-in Verify OTP for existing account
+  const handleSigninVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+
+    if (!isSigninOtpSent || !signinConfirmationResult) {
+      setErrorMessage('Please request an SMS verification code first.');
+      return;
+    }
+
+    if (!signinOtpCode || signinOtpCode.trim().length < 6) {
+      setErrorMessage('Please enter the complete 6-digit SMS verification code.');
+      return;
+    }
+
+    setIsSigninVerifyingOtp(true);
+    try {
+      const res = await verifyFirebasePhoneOtp(signinConfirmationResult, signinOtpCode);
+
+      if (res.success && res.user) {
+        const firebaseUser = res.user;
+        const fullPhone = phone.trim().startsWith('+') ? phone.trim() : `${signinCountryCode}${phone.trim()}`;
+
+        let existingProfile = await getUserProfileFromFirestore(firebaseUser.uid);
+        if (!existingProfile) {
+          existingProfile = await getUserProfileByPhone(fullPhone);
+        }
+
+        const userProfile: Partial<User> = existingProfile || {
+          id: firebaseUser.uid,
+          name: `Member_${phone.slice(-4)}`,
+          username: `user_${phone.slice(-4)}`,
+          mobileNumber: firebaseUser.phoneNumber || signinFormattedNumberDisplay || fullPhone,
+          avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80',
+          bio: 'Mobile verified member on Funshann 🚀',
+        };
+
+        if (existingProfile && existingProfile.id) {
+          userProfile.id = existingProfile.id;
+        }
+
+        await syncUserProfileToFirestore(userProfile);
+        onAuthenticate(userProfile as User);
+      } else {
+        setErrorMessage(res.error || 'Incorrect SMS code entered. Please check your messages and try again.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to verify the SMS code. Please try again.');
+    } finally {
+      setIsSigninVerifyingOtp(false);
     }
   };
 
@@ -341,20 +491,15 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
             >
               {/* Center Floating 3D Circular Medallion */}
               <div className="relative mb-6">
-                <div className="w-64 h-64 rounded-full bg-gradient-to-b from-[#FFFFFF] to-[#F4F7FB] shadow-[0_24px_50px_-8px_rgba(100,116,139,0.32),0_10px_20px_-4px_rgba(148,163,184,0.2),inset_0_2px_6px_rgba(255,255,255,0.95)] flex items-center justify-center border border-white/80 p-2">
-                  {/* 3D Typographic Brand Emblem */}
-                  <div className="flex items-center justify-center tracking-tight font-extrabold text-[3.1rem] leading-none select-none">
-                    {/* "Fun" in 3D Glossy Onyx Black */}
-                    <span className="text-[#1E242E] drop-shadow-[0_4px_6px_rgba(0,0,0,0.35)] relative font-black">
-                      Fun
-                    </span>
-                    {/* "shann" in 3D Royal Blue with Specular Depth */}
-                    <span className="text-[#2F7CF6] drop-shadow-[0_4px_10px_rgba(37,99,235,0.45)] relative font-black ml-[1px]">
-                      shann
-                      {/* Glossy Blue Bead Accent over the last 'n' */}
-                      <span className="absolute -top-1.5 -right-3 w-3 h-3 rounded-full bg-gradient-to-br from-[#60A5FA] to-[#1D4ED8] shadow-[0_3px_6px_rgba(37,99,235,0.45),inset_0_1px_2px_rgba(255,255,255,0.7)] inline-block" />
-                    </span>
-                  </div>
+                <div className="w-64 h-64 rounded-full bg-gradient-to-b from-[#FFFFFF] to-[#F4F7FB] shadow-[0_24px_50px_-8px_rgba(100,116,139,0.32),0_10px_20px_-4px_rgba(148,163,184,0.2),inset_0_2px_6px_rgba(255,255,255,0.95)] flex items-center justify-center border border-white/80 p-3 overflow-hidden">
+                  <img
+                    src="/logo.png"
+                    alt="Funshann Official Logo"
+                    className="w-full h-full object-cover rounded-full shadow-inner"
+                    onError={(e) => {
+                      e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23ffffff'/%3E%3Ctext x='50' y='68' font-size='55' font-weight='bold' text-anchor='middle' fill='%23000000' font-family='sans-serif'%3EF%3C/text%3E%3C/svg%3E";
+                    }}
+                  />
                 </div>
               </div>
 
@@ -665,17 +810,37 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                         </button>
                       )}
                     </div>
-                    <div className="relative">
-                      <Phone className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-                      <input
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+91 98765 43210"
+                    <div className="flex gap-2">
+                      <select
+                        value={signupCountryCode}
+                        onChange={(e) => setSignupCountryCode(e.target.value)}
                         disabled={isOtpSent || isSendingOtp}
-                        required
-                        className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-60"
-                      />
+                        aria-label="Country Code"
+                        className="h-11 px-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#2563EB] disabled:opacity-60"
+                      >
+                        <option value="+91">🇮🇳 +91</option>
+                        <option value="+1">🇺🇸 +1</option>
+                        <option value="+44">🇬🇧 +44</option>
+                        <option value="+61">🇦🇺 +61</option>
+                        <option value="+81">🇯🇵 +81</option>
+                        <option value="+49">🇩🇪 +49</option>
+                        <option value="+33">🇫🇷 +33</option>
+                        <option value="+971">🇦🇪 +971</option>
+                        <option value="+55">🇧🇷 +55</option>
+                        <option value="+52">🇲🇽 +52</option>
+                      </select>
+                      <div className="relative flex-1">
+                        <Phone className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                        <input
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="98765 43210"
+                          disabled={isOtpSent || isSendingOtp}
+                          required
+                          className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-60"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -695,9 +860,18 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                       </div>
 
                       <div>
-                        <label className="text-xs font-bold text-slate-800 block mb-1">
-                          Enter 6-Digit SMS Verification Code
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-800">
+                            Enter 6-Digit SMS Verification Code
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleAutoFillOtp(false)}
+                            className="text-[11px] font-bold text-[#2563EB] hover:underline flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-md"
+                          >
+                            <span>⚡ Auto-fill / Paste</span>
+                          </button>
+                        </div>
                         <input
                           type="text"
                           inputMode="numeric"
@@ -806,61 +980,272 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handleEmailLogin} className="flex flex-col gap-3.5">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Email or Username</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      required
-                      className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-slate-700">Password</label>
-                    <button
-                      type="button"
-                      onClick={() => alert('Password reset link sent to your registered email.')}
-                      className="text-[11px] text-[#2563EB] font-semibold hover:underline"
-                    >
-                      Forgot?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      required
-                      className="w-full h-11 pl-10 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
+              {/* Sign In Method Tabs (Email vs Mobile) */}
+              <div className="flex bg-[#F1F5F9] p-1 rounded-2xl mb-4">
                 <button
-                  type="submit"
-                  className="w-full h-12 mt-1 bg-gradient-to-r from-[#3B82F6] via-[#2F7AF6] to-[#1D63ED] text-white font-bold rounded-xl text-sm shadow-[0_10px_20px_rgba(37,99,235,0.3)] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:brightness-105"
+                  type="button"
+                  onClick={() => {
+                    setSigninMethod('email');
+                    setErrorMessage('');
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                    signinMethod === 'email'
+                      ? 'bg-white text-[#2563EB] shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
                 >
-                  <span>Log In to Funshann</span>
-                  <ChevronRight className="w-4 h-4" />
+                  Email Address
                 </button>
-              </form>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSigninMethod('mobile');
+                    setErrorMessage('');
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                    signinMethod === 'mobile'
+                      ? 'bg-white text-[#2563EB] shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Mobile Number
+                </button>
+              </div>
+
+              {/* EMAIL LOGIN FORM */}
+              {signinMethod === 'email' && (
+                <form onSubmit={handleEmailLogin} className="flex flex-col gap-3.5">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Email or Username</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="name@example.com"
+                        required
+                        className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">Password</label>
+                      <button
+                        type="button"
+                        onClick={() => alert('Password reset link sent to your registered email.')}
+                        className="text-[11px] text-[#2563EB] font-semibold hover:underline"
+                      >
+                        Forgot?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter your password"
+                        required
+                        className="w-full h-11 pl-10 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full h-12 mt-1 bg-gradient-to-r from-[#3B82F6] via-[#2F7AF6] to-[#1D63ED] text-white font-bold rounded-xl text-sm shadow-[0_10px_20px_rgba(37,99,235,0.3)] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:brightness-105"
+                  >
+                    <span>Log In to Funshann</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </form>
+              )}
+
+              {/* MOBILE LOGIN OTP FORM */}
+              {signinMethod === 'mobile' && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (isSigninOtpSent) {
+                      handleSigninVerifyOtp(e);
+                    } else {
+                      handleSigninSendOtp();
+                    }
+                  }}
+                  className="flex flex-col gap-3"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">Mobile Phone Number</label>
+                      {isSigninOtpSent && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsSigninOtpSent(false);
+                            setSigninConfirmationResult(null);
+                            setSigninOtpCode('');
+                            setErrorMessage('');
+                          }}
+                          className="text-[11px] font-semibold text-[#2563EB] hover:underline flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Change Number</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <select
+                        value={signinCountryCode}
+                        onChange={(e) => setSigninCountryCode(e.target.value)}
+                        disabled={isSigninOtpSent || isSigninSendingOtp}
+                        aria-label="Country Code"
+                        className="h-11 px-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#2563EB] disabled:opacity-60"
+                      >
+                        <option value="+91">🇮🇳 +91</option>
+                        <option value="+1">🇺🇸 +1</option>
+                        <option value="+44">🇬🇧 +44</option>
+                        <option value="+61">🇦🇺 +61</option>
+                        <option value="+81">🇯🇵 +81</option>
+                        <option value="+49">🇩🇪 +49</option>
+                        <option value="+33">🇫🇷 +33</option>
+                        <option value="+971">🇦🇪 +971</option>
+                        <option value="+55">🇧🇷 +55</option>
+                        <option value="+52">🇲🇽 +52</option>
+                      </select>
+                      <div className="relative flex-1">
+                        <Phone className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                        <input
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="98765 43210"
+                          disabled={isSigninOtpSent || isSigninSendingOtp}
+                          required
+                          className="w-full h-11 pl-10 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {errorMessage && (
+                    <div className="p-2.5 mb-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-medium flex flex-col gap-1.5">
+                      <span>{errorMessage}</span>
+                      {errorMessage.toLowerCase().includes('not registered') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setViewMode('signup');
+                            setSignupMethod('mobile');
+                            setErrorMessage('');
+                          }}
+                          className="text-[11px] font-bold text-[#2563EB] hover:underline text-left flex items-center gap-1"
+                        >
+                          <span>No account found? Create Account / Sign Up →</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {isSigninOtpSent && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="pt-1 flex flex-col gap-2"
+                    >
+                      <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/80 text-blue-900 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-[#2563EB] shrink-0" />
+                          <span className="font-medium text-[11.5px]">
+                            SMS sent to <span className="font-bold">{signinFormattedNumberDisplay || phone}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-800">
+                            Enter 6-Digit SMS Verification Code
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleAutoFillOtp(true)}
+                            className="text-[11px] font-bold text-[#2563EB] hover:underline flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-md"
+                          >
+                            <span>⚡ Auto-fill / Paste</span>
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={6}
+                          value={signinOtpCode}
+                          onChange={(e) => setSigninOtpCode(e.target.value.replace(/\D/g, ''))}
+                          placeholder="••••••"
+                          autoFocus
+                          required
+                          disabled={isSigninVerifyingOtp}
+                          className="w-full h-12 text-center tracking-[0.45em] text-xl font-bold font-mono bg-slate-50 border-2 border-blue-500/80 rounded-xl text-slate-900 focus:outline-none focus:border-[#2563EB] focus:bg-white disabled:opacity-60"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[11px] text-slate-500">Didn't receive SMS?</span>
+                        <button
+                          type="button"
+                          disabled={signinResendCooldown > 0 || isSigninSendingOtp}
+                          onClick={handleSigninSendOtp}
+                          className="text-[11px] font-bold text-[#2563EB] hover:underline disabled:opacity-50 disabled:no-underline flex items-center gap-1"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isSigninSendingOtp ? 'animate-spin' : ''}`} />
+                          <span>
+                            {signinResendCooldown > 0 ? `Resend in ${signinResendCooldown}s` : 'Resend SMS Code'}
+                          </span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <button
+                    id="signin-otp-btn"
+                    type="submit"
+                    disabled={isSigninSendingOtp || isSigninVerifyingOtp}
+                    className="w-full h-12 mt-2 bg-gradient-to-r from-[#3B82F6] via-[#2F7AF6] to-[#1D63ED] text-white font-bold rounded-xl text-sm shadow-[0_10px_20px_rgba(37,99,235,0.3)] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:brightness-105 disabled:opacity-75 disabled:cursor-not-allowed"
+                  >
+                    {isSigninSendingOtp ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Sending SMS Code...</span>
+                      </>
+                    ) : isSigninVerifyingOtp ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Verifying Code...</span>
+                      </>
+                    ) : isSigninOtpSent ? (
+                      <>
+                        <span>Verify & Login</span>
+                        <CheckCircle2 className="w-4 h-4" />
+                      </>
+                    ) : (
+                      <>
+                        <span>Send SMS Verification Code</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
 
               {/* Or Login with Social */}
               <div className="flex items-center gap-3 my-4">
