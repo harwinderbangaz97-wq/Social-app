@@ -2,14 +2,6 @@ import React, { useState, useEffect, Component, ErrorInfo, lazy, Suspense } from
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, Loader2 } from 'lucide-react';
 import {
-  CURRENT_USER,
-  MOCK_USERS,
-  INITIAL_STORIES,
-  INITIAL_POSTS,
-  INITIAL_CHAT_THREADS,
-  INITIAL_NOTIFICATIONS,
-} from './data/mockData';
-import {
   User,
   Story,
   Post,
@@ -86,6 +78,29 @@ const UploadTab = lazy(() => import('./components/tabs/UploadTab').then(m => ({ 
 const ChatTab = lazy(() => import('./components/tabs/ChatTab').then(m => ({ default: m.ChatTab })));
 const ProfileTab = lazy(() => import('./components/tabs/ProfileTab').then(m => ({ default: m.ProfileTab })));
 
+const EMPTY_USER: User = {
+  id: '',
+  name: '',
+  username: '',
+  avatar: '',
+  bio: '',
+  location: '',
+  website: '',
+  interests: [],
+  socialLinks: [],
+  birthday: '',
+  mobileNumber: '',
+  email: '',
+  twoFactorEnabled: false,
+  twoFactorMethod: 'authenticator',
+  usernameLastChangedAt: new Date().toISOString(),
+  postsCount: 0,
+  followersCount: 0,
+  followingCount: 0,
+  isVerified: false,
+  isOnline: false,
+};
+
 const LoadingSpinner = () => (
   <div className="flex justify-center items-center h-full w-full p-10">
     <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -116,7 +131,28 @@ function AppContent() {
     canGoBack,
   } = useNavigation();
 
-  const [currentUser, setCurrentUser] = useState<User>(CURRENT_USER);
+  const [currentUser, setCurrentUser] = useState<User>({
+    id: '',
+    name: '',
+    username: '',
+    avatar: '',
+    bio: '',
+    location: '',
+    website: '',
+    interests: [],
+    socialLinks: [],
+    birthday: '',
+    mobileNumber: '',
+    email: '',
+    twoFactorEnabled: false,
+    twoFactorMethod: 'authenticator',
+    usernameLastChangedAt: new Date().toISOString(),
+    postsCount: 0,
+    followersCount: 0,
+    followingCount: 0,
+    isVerified: false,
+    isOnline: false,
+  });
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
   const handleFinishSplash = () => {
@@ -197,11 +233,11 @@ function AppContent() {
       );
     }
   };
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  const [stories, setStories] = useState<Story[]>(INITIAL_STORIES);
-  const [posts, setPosts] = useState<Post[]>(INITIAL_POSTS);
-  const [chatThreads, setChatThreads] = useState<ChatThread[]>(INITIAL_CHAT_THREADS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [users, setUsers] = useState<User[]>([]);
+  const [stories, setStories] = useState<Story[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isCreatingStory, setIsCreatingStory] = useState<boolean>(false);
 
   // App Permissions State from central PermissionAndMediaContext
@@ -249,26 +285,24 @@ function AppContent() {
     // 2. Real-time Firestore Subscriptions for Posts, Stories, Chat Threads, Users, and Notifications
     const unsubPosts = subscribeToPosts((remotePosts) => {
       if (remotePosts) {
-        setPosts((prevPosts) => {
-          const map = new Map<string, Post>();
-          // Seed with initial posts
-          INITIAL_POSTS.forEach((p) => map.set(p.id, p));
-          // Keep local in-memory posts
-          prevPosts.forEach((p) => map.set(p.id, p));
-          // Overlay remote posts from Firestore
-          remotePosts.forEach((p) => {
-            if (p && p.id && isValidMediaUrl(p.imageUrl)) {
-              map.set(p.id, p);
-            }
-          });
+          setPosts((prevPosts) => {
+            const map = new Map<string, Post>();
+            // Keep local in-memory posts
+            prevPosts.forEach((p) => map.set(p.id, p));
+            // Overlay remote posts from Firestore
+            remotePosts.forEach((p) => {
+              if (p && p.id && isValidMediaUrl(p.imageUrl)) {
+                map.set(p.id, p);
+              }
+            });
 
-          // Sort strictly newest first
-          return Array.from(map.values()).sort((a, b) => {
-            const timeA = a.createdAtMs || (a.id.startsWith('post_') ? parseInt(a.id.replace('post_', ''), 10) || 0 : 0);
-            const timeB = b.createdAtMs || (b.id.startsWith('post_') ? parseInt(b.id.replace('post_', ''), 10) || 0 : 0);
-            return timeB - timeA;
+            // Sort strictly newest first
+            return Array.from(map.values()).sort((a, b) => {
+              const timeA = a.createdAtMs || (a.id.startsWith('post_') ? parseInt(a.id.replace('post_', ''), 10) || 0 : 0);
+              const timeB = b.createdAtMs || (b.id.startsWith('post_') ? parseInt(b.id.replace('post_', ''), 10) || 0 : 0);
+              return timeB - timeA;
+            });
           });
-        });
       }
     });
 
@@ -276,7 +310,6 @@ function AppContent() {
       if (remoteStories && remoteStories.length > 0) {
         setStories((prevStories) => {
           const map = new Map<string, Story>();
-          INITIAL_STORIES.forEach((s) => map.set(s.id, s));
           prevStories.forEach((s) => map.set(s.id, s));
           remoteStories.forEach((s) => {
             if (s && s.id && isValidMediaUrl(s.mediaUrl)) {
@@ -292,7 +325,6 @@ function AppContent() {
       if (remoteThreads && remoteThreads.length > 0) {
         setChatThreads((prevThreads) => {
           const map = new Map<string, ChatThread>();
-          INITIAL_CHAT_THREADS.forEach((t) => map.set(t.id, t));
           prevThreads.forEach((t) => map.set(t.id, t));
           remoteThreads.forEach((t) => {
             if (t && t.id) {
@@ -308,7 +340,6 @@ function AppContent() {
       if (remoteUsers && remoteUsers.length > 0) {
         setUsers((prevUsers) => {
           const map = new Map<string, User>();
-          MOCK_USERS.forEach((u) => map.set(u.id, u));
           prevUsers.forEach((u) => map.set(u.id, u));
           remoteUsers.forEach((u) => {
             if (u && u.id) {
@@ -324,7 +355,6 @@ function AppContent() {
       if (remoteNotifs && remoteNotifs.length > 0) {
         setNotifications((prevNotifs) => {
           const map = new Map<string, NotificationItem>();
-          INITIAL_NOTIFICATIONS.forEach((n) => map.set(n.id, n));
           prevNotifs.forEach((n) => map.set(n.id, n));
           remoteNotifs.forEach((n) => {
             if (n && n.id) {
@@ -934,8 +964,7 @@ function AppContent() {
 
       // If thread didn't exist yet, create it from MOCK_USERS / users
       const targetUser =
-        users.find((u) => u.id === receiverId) ||
-        MOCK_USERS.find((u) => u.id === receiverId) || {
+        users.find((u) => u.id === receiverId) || {
           id: receiverId,
           name: 'Contact',
           username: 'contact',
@@ -943,6 +972,16 @@ function AppContent() {
           followersCount: 0,
           followingCount: 0,
           postsCount: 0,
+          isVerified: false,
+          isOnline: false,
+          interests: [],
+          socialLinks: [],
+          birthday: '',
+          mobileNumber: '',
+          email: '',
+          twoFactorEnabled: false,
+          twoFactorMethod: 'authenticator',
+          usernameLastChangedAt: new Date().toISOString(),
           isFollowing: false,
         };
 
@@ -1414,7 +1453,7 @@ function AppContent() {
     ? navState.profileHistory[navState.profileHistory.length - 1]
     : null;
 
-  const activeUser = currentUser || CURRENT_USER;
+  const activeUser = currentUser || EMPTY_USER;
   const displayedProfileUser = currentProfileUser
     ? (users.find((u) => u.id === currentProfileUser.id) || currentProfileUser)
     : activeUser;
@@ -1704,7 +1743,7 @@ function AppContent() {
             }}
             onShowToast={showToast}
             onResetData={() => {
-              setCurrentUser(CURRENT_USER);
+              setCurrentUser(EMPTY_USER);
             }}
             users={users}
             chatThreads={chatThreads}

@@ -41,7 +41,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, ChatThread, Message, VoiceNoteData, MessagePrivacyMode, MessageReportReason } from '../types';
-import { MOCK_USERS } from '../data/mockData';
 import { ShareCommunityModal } from './ShareCommunityModal';
 import { VoiceMessageBubble } from './VoiceMessageBubble';
 import { ChatWallpaperModal, ChatWallpaperSettings } from './ChatWallpaperModal';
@@ -1125,7 +1124,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     } else if (forwardTargetMessage.senderName) {
       originSenderName = forwardTargetMessage.senderName;
     } else {
-      const foundSender = MOCK_USERS.find((u) => u.id === forwardTargetMessage.senderId);
+      const foundSender = allUsers?.find((u) => u.id === forwardTargetMessage.senderId);
       if (foundSender) originSenderName = foundSender.name;
     }
 
@@ -2018,7 +2017,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             }
                           : t.participant
                       ),
-                      ...MOCK_USERS,
+                      ...allUsers,
                       ...(allUsers || []),
                     ];
 
@@ -2796,7 +2795,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       <CreateGroupModal
         isOpen={isCreateGroupModalOpen}
         currentUser={currentUser}
-        allUsers={allUsers || MOCK_USERS}
+        allUsers={allUsers || []}
         onClose={() => setIsCreateGroupModalOpen(false)}
         onCreateGroup={(name, desc, avatar, memberIds) => {
           if (onCreateGroup) {
@@ -2815,7 +2814,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           isOpen={isGroupInfoModalOpen}
           thread={activeThread}
           currentUser={currentUser}
-          allUsers={allUsers || MOCK_USERS}
+          allUsers={allUsers || []}
           onClose={() => setIsGroupInfoModalOpen(false)}
           onUpdateGroup={(groupId, updates) => {
             if (onUpdateGroup) {
@@ -3117,6 +3116,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               selectedChannelCommunity.name
             );
           }}
+          users={allUsers || []}
         />
       )}
 
@@ -3125,7 +3125,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         community={shareCommunityTarget}
         isOpen={shareCommunityTarget !== null}
         onClose={() => setShareCommunityTarget(null)}
-        users={MOCK_USERS}
+        users={allUsers || []}
         onShowToast={(msg, type) => triggerCommunityToast(msg, (type as any) || 'info')}
       />
 

@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { TabType, User, Post, SettingsSection } from '../types';
-import { CURRENT_USER } from '../data/mockData';
 
 export interface NavigationState {
   tab: TabType;
@@ -84,7 +83,7 @@ interface NavigationProviderProps {
 
 export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   children,
-  currentUser = CURRENT_USER,
+  currentUser,
   onShowToast,
 }) => {
   const [navState, setNavState] = useState<NavigationState>(initialNavState);
@@ -367,7 +366,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
       if (!user) return;
       window.scrollTo({ top: 0, behavior: 'instant' });
       setNavState((prev) => {
-        const currentUserId = currentUser?.id || CURRENT_USER.id;
+        const currentUserId = currentUser?.id || '';
         const isSelf = user.id === currentUserId;
         const updatedHistory: TabType[] = prev.tab !== 'profile' ? [...prev.tabHistory, 'profile' as TabType] : prev.tabHistory;
 

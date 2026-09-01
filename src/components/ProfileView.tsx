@@ -39,7 +39,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Post, ThemeMode, SocialLink } from '../types';
-import { CURRENT_USER } from '../data/mockData';
 import { EditProfileModal } from './EditProfileModal';
 import { IndividualUserMenu } from './IndividualUserMenu';
 import { useNavigation } from '../context/NavigationContext';
@@ -122,7 +121,7 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
   const isEditModalOpen = navState.isEditProfileOpen;
   const selectedPreviewPost = navState.previewPost;
 
-  const activeUser = currentUser || CURRENT_USER;
+  const activeUser = currentUser;
   const displayedUser: User = profileUser || activeUser || {
     id: 'user_fallback',
     name: 'Funshann Member',

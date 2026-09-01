@@ -47,7 +47,6 @@ import {
   Zap,
   Forward,
 } from 'lucide-react';
-import { MOCK_USERS } from '../data/mockData';
 import { User, VoiceNoteData } from '../types';
 import { syncCommunityToFirestore } from '../services/firebase';
 
@@ -104,6 +103,7 @@ interface CommunityChannelModalProps {
   onOpenOwnerAdmin: () => void;
   onShowToast?: (msg: string, type?: 'success' | 'info' | 'warning') => void;
   onForwardMessage?: (receiverId: string, text?: string, imageUrl?: string, voiceNote?: VoiceNoteData) => void;
+  users: User[];
 }
 
 export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
@@ -117,6 +117,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
   onOpenOwnerAdmin,
   onShowToast,
   onForwardMessage,
+  users,
 }) => {
   const [activeTab, setActiveTab] = useState<'chat' | 'info' | 'members'>('chat');
   const [inputText, setInputText] = useState('');
@@ -1622,7 +1623,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
 
               {/* Contact List */}
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[160px] max-h-[260px] no-scrollbar">
-                {MOCK_USERS.filter((u) => {
+              {users.filter((u) => {
                   if (!forwardSearchQuery.trim()) return true;
                   const q = forwardSearchQuery.toLowerCase();
                   return u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q);
