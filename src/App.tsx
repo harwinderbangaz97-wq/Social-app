@@ -1009,7 +1009,7 @@ function AppContent() {
 
     // If message includes local data URL media or voice note, upload to Firebase Storage in background
     if (imageUrl && imageUrl.startsWith('data:')) {
-      uploadChatMediaToStorage(receiverId, imageUrl, 'image')
+      uploadChatMediaToStorage(currentUser.id, receiverId, imageUrl, 'image')
         .then((downloadUrl) => {
           if (downloadUrl && downloadUrl !== imageUrl) {
             setChatThreads((prevThreads) =>
@@ -1031,7 +1031,7 @@ function AppContent() {
         })
         .catch(console.warn);
     } else if (voiceNote?.audioUrl && voiceNote.audioUrl.startsWith('data:')) {
-      uploadChatMediaToStorage(receiverId, voiceNote.audioUrl, 'audio')
+      uploadChatMediaToStorage(currentUser.id, receiverId, voiceNote.audioUrl, 'audio')
         .then((downloadUrl) => {
           if (downloadUrl && downloadUrl !== voiceNote.audioUrl) {
             setChatThreads((prevThreads) =>

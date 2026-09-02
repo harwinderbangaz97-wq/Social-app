@@ -533,7 +533,7 @@ export const uploadUserAvatarToStorage = async (
   media: File | Blob | string
 ): Promise<string> => {
   const ext = typeof media === 'string' && media.startsWith('data:image/png') ? 'png' : 'jpg';
-  const path = `users/${userId}/avatar_${Date.now()}.${ext}`;
+  const path = `users/${userId}/profile/avatar_${Date.now()}.${ext}`;
   return uploadMediaToStorage({
     dataOrUrlOrFile: media,
     storagePath: path,
@@ -548,7 +548,7 @@ export const uploadPostImageToStorage = async (
   userId: string,
   media: File | Blob | string
 ): Promise<string> => {
-  const path = `posts/${userId}/${Date.now()}_post.jpg`;
+  const path = `users/${userId}/posts/${Date.now()}_post.jpg`;
   return uploadMediaToStorage({
     dataOrUrlOrFile: media,
     storagePath: path,
@@ -566,7 +566,7 @@ export const uploadStoryMediaToStorage = async (
 ): Promise<string> => {
   const ext = isVideo ? 'mp4' : 'jpg';
   const mime = isVideo ? 'video/mp4' : 'image/jpeg';
-  const path = `stories/${userId}/${Date.now()}_story.${ext}`;
+  const path = `users/${userId}/stories/${Date.now()}_story.${ext}`;
   return uploadMediaToStorage({
     dataOrUrlOrFile: media,
     storagePath: path,
@@ -578,13 +578,14 @@ export const uploadStoryMediaToStorage = async (
  * Upload chat attachment / voice recording to Cloud Storage
  */
 export const uploadChatMediaToStorage = async (
+  userId: string,
   threadId: string,
   media: File | Blob | string,
   mediaType: 'image' | 'video' | 'audio' = 'image'
 ): Promise<string> => {
   const extMap = { image: 'jpg', video: 'mp4', audio: 'webm' };
   const mimeMap = { image: 'image/jpeg', video: 'video/mp4', audio: 'audio/webm' };
-  const path = `chats/${threadId}/${mediaType}_${Date.now()}.${extMap[mediaType]}`;
+  const path = `users/${userId}/chats/${threadId}/${mediaType}_${Date.now()}.${extMap[mediaType]}`;
   return uploadMediaToStorage({
     dataOrUrlOrFile: media,
     storagePath: path,
