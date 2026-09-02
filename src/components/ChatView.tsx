@@ -63,6 +63,9 @@ import {
   markMessageAsReadInFirestore,
   deleteChatMessageFromFirestore,
   toggleMessageReactionInFirestore,
+  loadChatHistory,
+  getCachedChatMessages,
+  addChatMessageToFirestore,
 } from '../services/chatService';
 
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
@@ -86,7 +89,8 @@ interface ChatViewProps {
     voiceNote?: VoiceNoteData,
     privacyMode?: MessagePrivacyMode,
     isForwarded?: boolean,
-    forwardedFrom?: string
+    forwardedFrom?: string,
+    skipFirestoreWrite?: boolean
   ) => void;
   onDeleteMessage?: (threadId: string, messageId: string) => void;
   onReportMessage?: (
@@ -917,24 +921,53 @@ export const ChatView: React.FC<ChatViewProps> = ({
     return undefined;
   }, [rawActiveThread, recipientUserId, allUsers, isGroupThread]);
 
+  // Consistent Room Path: Define chatId dynamically as [currentUser.uid, targetUser.uid].sort().join('_')
+  const currentUserId = (currentUser as any)?.uid || currentUser.id || '';
+  const targetUserId = (resolvedParticipant as any)?.uid || resolvedParticipant?.id || recipientUserId || (
+    activeChatUserId?.includes('_')
+      ? activeChatUserId.split('_').find(id => id !== currentUserId)
+      : activeChatUserId
+  ) || '';
+
   const deterministicChatId = useMemo(() => {
     if (!activeChatUserId) return '';
     if (isGroupThread) return rawActiveThread?.id || activeChatUserId;
-    const targetId = resolvedParticipant?.id || recipientUserId || activeChatUserId;
-    return getChatRoomId(currentUser.id, targetId);
-  }, [activeChatUserId, isGroupThread, rawActiveThread?.id, resolvedParticipant?.id, recipientUserId, currentUser.id]);
+    if (!currentUserId || !targetUserId) return '';
+    return [currentUserId, targetUserId].sort().join('_');
+  }, [activeChatUserId, isGroupThread, rawActiveThread?.id, currentUserId, targetUserId]);
 
-  // Universal Real-time Firestore Sync (onSnapshot on chats/{chatId}/messages)
-  const [liveFirestoreMessages, setLiveFirestoreMessages] = useState<Message[]>([]);
+  // Firestore Real-time Listener:
+  // Map snapshot docs directly to React messages state so incoming and outgoing messages persist and update automatically.
+  // Cache eliminates starting with an empty array.
+  const [messages, setMessages] = useState<Message[]>(() => {
+    return deterministicChatId ? getCachedChatMessages(deterministicChatId) : [];
+  });
 
+  // Clear Session Side-effects & Real-time onSnapshot Listener
   useEffect(() => {
     if (!deterministicChatId) {
-      setLiveFirestoreMessages([]);
+      setMessages([]);
       return;
     }
 
-    const unsubscribe = subscribeToChatMessages(deterministicChatId, (incoming) => {
-      setLiveFirestoreMessages(incoming);
+    // Ensure opening any chat screen loads existing message history directly from Firestore rather than starting with an empty array
+    const cached = getCachedChatMessages(deterministicChatId);
+    if (cached.length > 0) {
+      setMessages(cached);
+    } else {
+      loadChatHistory(deterministicChatId)
+        .then((history) => {
+          if (history.length > 0) {
+            setMessages(history);
+          }
+        })
+        .catch(console.warn);
+    }
+
+    // In useEffect, attach an onSnapshot listener to chats/{chatId}/messages sorted by timestamp ascending
+    const unsubscribe = subscribeToChatMessages(deterministicChatId, (incomingMessages) => {
+      // Map the snapshot docs directly to the React messages state so incoming and outgoing messages persist and update automatically
+      setMessages(incomingMessages);
     });
 
     return () => {
@@ -958,17 +991,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
       },
     };
 
-    const combinedMessages = liveFirestoreMessages.length > 0
-      ? liveFirestoreMessages
-      : (baseThread.messages || []);
-
     return {
       ...baseThread,
       id: deterministicChatId || baseThread.id,
       participant: resolvedParticipant || baseThread.participant,
-      messages: combinedMessages,
+      messages: messages, // Mapped directly from Firestore onSnapshot listener
     };
-  }, [activeChatUserId, rawActiveThread, deterministicChatId, resolvedParticipant, liveFirestoreMessages]);
+  }, [activeChatUserId, rawActiveThread, deterministicChatId, resolvedParticipant, messages]);
 
   // Auto scroll to bottom when messages update or typing state changes
   useEffect(() => {
@@ -1060,7 +1089,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   const handleSendVoiceNote = async () => {
-    if (!activeThread) {
+    if (!activeThread || !deterministicChatId) {
       cleanupRecording();
       return;
     }
@@ -1088,21 +1117,45 @@ export const ChatView: React.FC<ChatViewProps> = ({
       ? activeThread.id
       : (resolvedParticipant?.id || recipientUserId || activeThread.participant?.id || activeChatUserId || '');
 
+    // Explicit write to Firestore using addDoc directly on chats/{chatId}/messages
+    // Do NOT use setMessages([...messages, newMessage])
+    try {
+      await addChatMessageToFirestore(deterministicChatId, {
+        senderId: currentUser.id,
+        receiverId: targetRecipientId,
+        voiceNote: voiceData,
+        privacyMode: effectivePrivacyMode,
+      });
+    } catch (err) {
+      console.warn('Error saving voice note to Firestore:', err);
+    }
+
+    // Call onSendMessage with skipFirestoreWrite=true to keep thread preview updated without local push
     onSendMessage(
       targetRecipientId,
       undefined,
       undefined,
       voiceData,
-      effectivePrivacyMode
+      effectivePrivacyMode,
+      false,
+      undefined,
+      true
     );
 
     setIsRecordingVoice(false);
     setRecordingSeconds(0);
   };
 
-  const handleSend = (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if ((!inputText.trim() && !attachedImage) || !activeThread) return;
+    if ((!inputText.trim() && !attachedImage) || !activeThread || !deterministicChatId) return;
+
+    const textToSend = inputText.trim() || undefined;
+    const imageToSend = attachedImage || undefined;
+
+    setInputText('');
+    setAttachedImage(null);
+    setShowImagePicker(false);
 
     const userSettings = getIndividualChatSettings((activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''));
     const privacySettings = getMessagePrivacySettings();
@@ -1119,16 +1172,31 @@ export const ChatView: React.FC<ChatViewProps> = ({
       ? activeThread.id
       : (resolvedParticipant?.id || recipientUserId || activeThread.participant?.id || activeChatUserId || '');
 
+    // Explicit write to Firestore using addDoc directly on chats/{chatId}/messages
+    // Do NOT use setMessages([...messages, newMessage])
+    try {
+      await addChatMessageToFirestore(deterministicChatId, {
+        senderId: currentUser.id,
+        receiverId: targetRecipientId,
+        text: textToSend,
+        imageUrl: imageToSend,
+        privacyMode: effectivePrivacyMode,
+      });
+    } catch (err) {
+      console.warn('Error saving message to Firestore:', err);
+    }
+
+    // Call onSendMessage with skipFirestoreWrite=true to keep thread preview updated without local push
     onSendMessage(
       targetRecipientId,
-      inputText.trim() || undefined,
-      attachedImage || undefined,
+      textToSend,
+      imageToSend,
       undefined,
-      effectivePrivacyMode
+      effectivePrivacyMode,
+      false,
+      undefined,
+      true
     );
-    setInputText('');
-    setAttachedImage(null);
-    setShowImagePicker(false);
   };
 
   const handleSelectAttachment = (imageUrl: string) => {
@@ -1239,6 +1307,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
       return;
     }
 
+    if (deterministicChatId && deleteTargetMessage.id) {
+      deleteChatMessageFromFirestore(deterministicChatId, deleteTargetMessage.id).catch(console.warn);
+    }
     if (onDeleteMessage) {
       onDeleteMessage(activeThread.id, deleteTargetMessage.id);
     }
@@ -1251,6 +1322,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
   // Auto delete message (for immediate & after_seen timers)
   const handleAutoDeleteMessage = (messageId: string) => {
     if (!activeThread) return;
+    if (deterministicChatId && messageId) {
+      deleteChatMessageFromFirestore(deterministicChatId, messageId).catch(console.warn);
+    }
     if (onDeleteMessage) {
       onDeleteMessage(activeThread.id, messageId);
     }
@@ -1282,7 +1356,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
       if (foundSender) originSenderName = foundSender.name;
     }
 
-    // Call onSendMessage with forwarded payload
+    // Explicit write to Firestore chats/{forwardChatId}/messages
+    const forwardChatId = [currentUser.id, recipientUser.id].sort().join('_');
+    addChatMessageToFirestore(forwardChatId, {
+      senderId: currentUser.id,
+      receiverId: recipientUser.id,
+      text: forwardTargetMessage.text,
+      imageUrl: forwardTargetMessage.imageUrl,
+      voiceNote: forwardTargetMessage.voiceNote,
+      privacyMode: 'normal',
+      isForwarded: true,
+      forwardedFrom: originSenderName,
+    }).catch(console.warn);
+
+    // Call onSendMessage with forwarded payload and skipFirestoreWrite=true
     onSendMessage(
       recipientUser.id,
       forwardTargetMessage.text,
@@ -1290,7 +1377,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
       forwardTargetMessage.voiceNote,
       'normal',
       true,
-      originSenderName
+      originSenderName,
+      true
     );
 
     if (onShowToast) {

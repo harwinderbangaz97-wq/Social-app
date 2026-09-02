@@ -971,37 +971,39 @@ function AppContent() {
     voiceNote?: VoiceNoteData,
     privacyMode: MessagePrivacyMode = 'normal',
     isForwarded?: boolean,
-    forwardedFrom?: string
+    forwardedFrom?: string,
+    skipFirestoreWrite?: boolean
   ) => {
-    const newMsg: Message = {
-      id: `m_${Date.now()}`,
-      senderId: currentUser.id,
-      receiverId,
-      text,
-      imageUrl,
-      voiceNote,
-      timestamp: 'Just now',
-      isRead: false,
-      privacyMode,
-      createdAt: Date.now(),
-      disappearingSeconds: privacyMode === 'immediate' ? 5 : (privacyMode === 'after_seen' ? 6 : undefined),
-      isForwarded,
-      forwardedFrom,
-    };
-
     const deterministicId = [currentUser.id, receiverId].sort().join('_');
 
-    // Send to Firestore chats/{chatId}/messages
-    sendChatMessage(currentUser.id, receiverId, {
-      text,
-      imageUrl,
-      voiceNote,
-      privacyMode,
-      isForwarded,
-      forwardedFrom,
-    }).catch(console.warn);
+    // Only perform write if not already performed by ChatView's explicit addDoc call
+    if (!skipFirestoreWrite) {
+      sendChatMessage(currentUser.id, receiverId, {
+        text,
+        imageUrl,
+        voiceNote,
+        privacyMode,
+        isForwarded,
+        forwardedFrom,
+      }).catch(console.warn);
+    }
 
+    // Update thread preview metadata in thread list without pushing to local messages state
     setChatThreads((prevThreads) => {
+      const summaryText = voiceNote
+        ? `Voice note (0:${voiceNote.durationSeconds < 10 ? '0' : ''}${voiceNote.durationSeconds})`
+        : (text || (imageUrl ? 'Photo attachment' : ''));
+
+      const lastMessageObj = {
+        text: summaryText,
+        imageUrl,
+        isVoice: !!voiceNote,
+        voiceDuration: voiceNote?.durationSeconds,
+        timestamp: 'Just now',
+        isRead: false,
+        isOwn: true,
+      };
+
       const existing = prevThreads.find(
         (t) => t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId)) || t.id === deterministicId
       );
@@ -1011,21 +1013,9 @@ function AppContent() {
             const updatedThread = {
               ...thread,
               id: thread.isGroup ? thread.id : deterministicId,
-              lastMessage: {
-                text: voiceNote
-                  ? `Voice note (0:${voiceNote.durationSeconds < 10 ? '0' : ''}${voiceNote.durationSeconds})`
-                  : (text || 'Photo attachment'),
-                imageUrl,
-                isVoice: !!voiceNote,
-                voiceDuration: voiceNote?.durationSeconds,
-                timestamp: 'Just now',
-                isRead: false,
-                isOwn: true,
-              },
-              messages: [...thread.messages, newMsg],
+              lastMessage: lastMessageObj,
             };
             syncChatThreadToFirestore(updatedThread).catch(console.warn);
-            syncChatMessageToFirestore(thread.id, newMsg).catch(console.warn);
             return updatedThread;
           }
           return thread;
@@ -1058,23 +1048,12 @@ function AppContent() {
       const newThread: ChatThread = {
         id: deterministicId,
         participant: targetUser,
-        lastMessage: {
-          text: voiceNote
-            ? `Voice note (0:${voiceNote.durationSeconds < 10 ? '0' : ''}${voiceNote.durationSeconds})`
-            : (text || 'Photo attachment'),
-          imageUrl,
-          isVoice: !!voiceNote,
-          voiceDuration: voiceNote?.durationSeconds,
-          timestamp: 'Just now',
-          isRead: false,
-          isOwn: true,
-        },
+        lastMessage: lastMessageObj,
         unreadCount: 0,
-        messages: [newMsg],
+        messages: [],
       };
 
       syncChatThreadToFirestore(newThread).catch(console.warn);
-      syncChatMessageToFirestore(newThread.id, newMsg).catch(console.warn);
       return [newThread, ...prevThreads];
     });
 
@@ -1085,15 +1064,12 @@ function AppContent() {
           if (downloadUrl && downloadUrl !== imageUrl) {
             setChatThreads((prevThreads) =>
               prevThreads.map((t) => {
-                if (t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId))) {
+                if (t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId)) || t.id === deterministicId) {
                   const updatedThread = {
                     ...t,
-                    messages: t.messages.map((m) =>
-                      m.id === newMsg.id ? { ...m, imageUrl: downloadUrl } : m
-                    ),
+                    lastMessage: t.lastMessage ? { ...t.lastMessage, imageUrl: downloadUrl } : t.lastMessage,
                   };
                   syncChatThreadToFirestore(updatedThread).catch(console.warn);
-                  syncChatMessageToFirestore(t.id, { ...newMsg, imageUrl: downloadUrl }).catch(console.warn);
                   return updatedThread;
                 }
                 return t;
@@ -1108,17 +1084,12 @@ function AppContent() {
           if (downloadUrl && downloadUrl !== voiceNote.audioUrl) {
             setChatThreads((prevThreads) =>
               prevThreads.map((t) => {
-                if (t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId))) {
+                if (t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId)) || t.id === deterministicId) {
                   const updatedThread = {
                     ...t,
-                    messages: t.messages.map((m) =>
-                      m.id === newMsg.id
-                        ? { ...m, voiceNote: { ...m.voiceNote!, audioUrl: downloadUrl } }
-                        : m
-                    ),
+                    lastMessage: t.lastMessage ? { ...t.lastMessage, isVoice: true } : t.lastMessage,
                   };
                   syncChatThreadToFirestore(updatedThread).catch(console.warn);
-                  syncChatMessageToFirestore(t.id, { ...newMsg, voiceNote: { ...newMsg.voiceNote!, audioUrl: downloadUrl } }).catch(console.warn);
                   return updatedThread;
                 }
                 return t;
