@@ -740,13 +740,13 @@ export const normalizeChatThread = (raw: any): ChatThread => {
             isVoice: Boolean(messages[messages.length - 1].voiceNote),
             timestamp: messages[messages.length - 1].timestamp || 'Just now',
             isRead: Boolean(messages[messages.length - 1].isRead),
-            isOwn: false,
+            senderId: messages[messages.length - 1].senderId || '',
           }
         : {
             text: '',
             timestamp: 'Just now',
             isRead: true,
-            isOwn: false,
+            senderId: '',
           }),
     unreadCount: typeof raw?.unreadCount === 'number' ? raw.unreadCount : 0,
     messages,

@@ -146,14 +146,14 @@ export const updateThreadAfterMessageDeletion = (
       voiceDuration: newLastMsg.voiceNote?.durationSeconds,
       timestamp: newLastMsg.timestamp,
       isRead: newLastMsg.isRead,
-      isOwn: newLastMsg.senderId !== thread.participant.id,
+      senderId: newLastMsg.senderId,
     };
   } else {
     newLastMessageData = {
       text: 'No messages yet',
       timestamp: 'Just now',
       isRead: true,
-      isOwn: false,
+      senderId: '',
     };
   }
 

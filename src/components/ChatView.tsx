@@ -66,7 +66,9 @@ import {
   loadChatHistory,
   getCachedChatMessages,
   addChatMessageToFirestore,
+  createOrEnsureChatDocument,
 } from '../services/chatService';
+import { getUserProfileFromFirestore } from '../services/firebase';
 
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
 export const MORE_REACTIONS = [
@@ -126,7 +128,7 @@ const CHAT_SAMPLE_IMAGES = [
 // Single Message Bubble Item with Countdown, Long-press and Reaction Overlays
 const MessageBubbleItem: React.FC<{
   msg: Message;
-  isOwn: boolean;
+  isMyMessage: boolean;
   activeThreadId: string;
   currentUserId: string;
   onDeleteMessage?: (messageId: string) => void;
@@ -136,7 +138,7 @@ const MessageBubbleItem: React.FC<{
   onToggleReaction?: (messageId: string, emoji: string) => void;
 }> = ({
   msg,
-  isOwn,
+  isMyMessage,
   currentUserId,
   onDeleteMessage,
   onOpenContextMenu,
@@ -221,7 +223,7 @@ const MessageBubbleItem: React.FC<{
       initial={{ opacity: 0, scale: 0.95, y: 6 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
-      className={`group flex flex-col ${isOwn ? 'items-end' : 'items-start'} relative select-none`}
+      className={`group flex flex-col ${isMyMessage ? 'items-end' : 'items-start'} relative select-none`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -230,7 +232,7 @@ const MessageBubbleItem: React.FC<{
       {/* Bubble Container */}
       <div
         className={`relative max-w-[85%] rounded-[22px] p-3 text-xs leading-relaxed transition-all cursor-pointer ${
-          isOwn
+          isMyMessage
             ? msg.privacyMode === 'immediate'
               ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-white rounded-br-sm shadow-md'
               : msg.privacyMode === 'after_seen'
@@ -244,7 +246,7 @@ const MessageBubbleItem: React.FC<{
         }`}
       >
         {/* Sender Name in Group Chat */}
-        {!isOwn && msg.senderName && (
+        {!isMyMessage && msg.senderName && (
           <span className="text-[10px] font-bold text-blue-600 mb-1 block">
             {msg.senderName}
           </span>
@@ -285,7 +287,7 @@ const MessageBubbleItem: React.FC<{
 
         {/* Voice Note Bubble */}
         {msg.voiceNote && (
-          <VoiceMessageBubble voiceNote={msg.voiceNote} isOwn={isOwn} />
+          <VoiceMessageBubble voiceNote={msg.voiceNote} isMyMessage={isMyMessage} />
         )}
 
         {/* Optional Image */}
@@ -327,7 +329,7 @@ const MessageBubbleItem: React.FC<{
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           className={`flex flex-wrap items-center gap-1 mt-1 z-10 select-none ${
-            isOwn ? 'justify-end pr-1' : 'justify-start pl-1'
+            isMyMessage ? 'justify-end pr-1' : 'justify-start pl-1'
           }`}
         >
           {msg.reactions.map((r) => {
@@ -371,7 +373,7 @@ const MessageBubbleItem: React.FC<{
       {/* Timestamp, Seen Status, and Quick Options Button */}
       <div className="flex items-center gap-1.5 mt-1 px-1 text-[10px] text-slate-500 font-semibold drop-shadow-xs">
         <span className="bg-white/70 backdrop-blur-xs px-1.5 py-0.2 rounded-md">{msg.timestamp}</span>
-        {isOwn && (
+        {isMyMessage && (
           <span title={msg.isRead ? 'Seen by recipient' : (msg.isDelivered ? 'Delivered' : 'Sent')}>
             {msg.isRead || msg.isDelivered ? (
               <CheckCheck
@@ -506,6 +508,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onLeaveGroup,
   allUsers = [],
 }) => {
+  // Ensure currentUser.uid is always set
+  if (currentUser && !currentUser.uid && currentUser.id) {
+    currentUser.uid = currentUser.id;
+  }
+
   // Dynamically resolve participant names and avatars from real-time allUsers 
   // since the sender's local db stores the other user as participant, but when downloaded by the recipient, 
   // it might still say the other user was themselves if we don't resolve it!
@@ -513,16 +520,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
     return rawThreads.map(thread => {
       if (thread.isGroup || !allUsers || !allUsers.length) return thread;
       // Resolve the other participant ID dynamically for 1-on-1 chats using the deterministic ID
-      const otherUserId = thread.id.split('_').find(id => id !== currentUser.id);
+      const currentUid = currentUser.uid || currentUser.id;
+      const otherUserId = thread.id.split('_').find(id => id !== currentUid && id !== currentUser.id);
       if (otherUserId) {
-        const otherUser = allUsers.find(u => u.id === otherUserId);
+        const otherUser = allUsers.find(u => u.id === otherUserId || (u as any).uid === otherUserId);
         if (otherUser) {
           return { ...thread, participant: otherUser };
         }
       }
       return thread;
     });
-  }, [rawThreads, allUsers, currentUser.id]);
+  }, [rawThreads, allUsers, currentUser.uid, currentUser.id]);
 
   const {
     navState,
@@ -872,11 +880,32 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const recipientUserId = useMemo(() => {
     if (!activeChatUserId || isGroupThread) return '';
+    const currentUid = currentUser.uid || currentUser.id;
     if (activeChatUserId.includes('_')) {
-      return activeChatUserId.split('_').find(id => id !== currentUser.id) || activeChatUserId;
+      return activeChatUserId.split('_').find(id => id !== currentUid && id !== currentUser.id) || activeChatUserId;
     }
     return activeChatUserId;
-  }, [activeChatUserId, isGroupThread, currentUser.id]);
+  }, [activeChatUserId, isGroupThread, currentUser.uid, currentUser.id]);
+
+  // Dynamic remote participant profile for dynamic header data
+  const [dynamicParticipant, setDynamicParticipant] = useState<User | null>(null);
+
+  useEffect(() => {
+    if (!recipientUserId || isGroupThread) {
+      setDynamicParticipant(null);
+      return;
+    }
+    const found = allUsers?.find(u => u.id === recipientUserId || (u as any).uid === recipientUserId);
+    if (found) {
+      setDynamicParticipant(found);
+      return;
+    }
+    getUserProfileFromFirestore(recipientUserId).then(remoteUser => {
+      if (remoteUser) {
+        setDynamicParticipant(remoteUser);
+      }
+    }).catch(console.warn);
+  }, [recipientUserId, allUsers, isGroupThread]);
 
   const rawActiveThread = useMemo(() => {
     if (!activeChatUserId) return null;
@@ -890,15 +919,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const resolvedParticipant = useMemo(() => {
     if (isGroupThread) return undefined;
+    if (dynamicParticipant) return dynamicParticipant;
     if (rawActiveThread?.participant) {
-      const live = allUsers?.find(u => u.id === rawActiveThread.participant!.id);
+      const live = allUsers?.find(u => u.id === rawActiveThread.participant!.id || (u as any).uid === rawActiveThread.participant!.id);
       return live || rawActiveThread.participant;
     }
     if (recipientUserId) {
-      const userMatch = allUsers?.find(u => u.id === recipientUserId);
+      const userMatch = allUsers?.find(u => u.id === recipientUserId || (u as any).uid === recipientUserId);
       if (userMatch) return userMatch;
       return {
         id: recipientUserId,
+        uid: recipientUserId,
         name: 'Contact',
         username: 'contact',
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
@@ -919,13 +950,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
       } as User;
     }
     return undefined;
-  }, [rawActiveThread, recipientUserId, allUsers, isGroupThread]);
+  }, [rawActiveThread, recipientUserId, allUsers, isGroupThread, dynamicParticipant]);
 
   // Consistent Room Path: Define chatId dynamically as [currentUser.uid, targetUser.uid].sort().join('_')
-  const currentUserId = (currentUser as any)?.uid || currentUser.id || '';
-  const targetUserId = (resolvedParticipant as any)?.uid || resolvedParticipant?.id || recipientUserId || (
+  const currentUserId = currentUser.uid || currentUser.id || '';
+  const targetUserId = resolvedParticipant?.uid || resolvedParticipant?.id || recipientUserId || (
     activeChatUserId?.includes('_')
-      ? activeChatUserId.split('_').find(id => id !== currentUserId)
+      ? activeChatUserId.split('_').find(id => id !== currentUserId && id !== currentUser.id)
       : activeChatUserId
   ) || '';
 
@@ -935,6 +966,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
     if (!currentUserId || !targetUserId) return '';
     return [currentUserId, targetUserId].sort().join('_');
   }, [activeChatUserId, isGroupThread, rawActiveThread?.id, currentUserId, targetUserId]);
+
+  // Store participantIds: [user1Id, user2Id] in the main chat document
+  useEffect(() => {
+    if (deterministicChatId && currentUserId && targetUserId && !isGroupThread) {
+      createOrEnsureChatDocument(currentUserId, targetUserId).catch(console.warn);
+    }
+  }, [deterministicChatId, currentUserId, targetUserId, isGroupThread]);
 
   // Firestore Real-time Listener:
   // Map snapshot docs directly to React messages state so incoming and outgoing messages persist and update automatically.
@@ -981,13 +1019,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
     const baseThread: ChatThread = rawActiveThread || {
       id: deterministicChatId,
       participant: resolvedParticipant,
+      participantIds: [currentUserId, targetUserId].sort(),
       unreadCount: 0,
       messages: [],
       lastMessage: {
         text: '',
         timestamp: '',
         isRead: true,
-        isOwn: false,
+        senderId: '',
       },
     };
 
@@ -1115,13 +1154,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
     const targetRecipientId = activeThread.isGroup
       ? activeThread.id
-      : (resolvedParticipant?.id || recipientUserId || activeThread.participant?.id || activeChatUserId || '');
+      : (resolvedParticipant?.uid || resolvedParticipant?.id || recipientUserId || activeThread.participant?.id || activeChatUserId || '');
 
     // Explicit write to Firestore using addDoc directly on chats/{chatId}/messages
     // Do NOT use setMessages([...messages, newMessage])
     try {
       await addChatMessageToFirestore(deterministicChatId, {
-        senderId: currentUser.id,
+        senderId: currentUser.uid || currentUser.id,
         receiverId: targetRecipientId,
         voiceNote: voiceData,
         privacyMode: effectivePrivacyMode,
@@ -1170,13 +1209,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
     const targetRecipientId = activeThread.isGroup
       ? activeThread.id
-      : (resolvedParticipant?.id || recipientUserId || activeThread.participant?.id || activeChatUserId || '');
+      : (resolvedParticipant?.uid || resolvedParticipant?.id || recipientUserId || activeThread.participant?.id || activeChatUserId || '');
 
     // Explicit write to Firestore using addDoc directly on chats/{chatId}/messages
     // Do NOT use setMessages([...messages, newMessage])
     try {
       await addChatMessageToFirestore(deterministicChatId, {
-        senderId: currentUser.id,
+        senderId: currentUser.uid || currentUser.id,
         receiverId: targetRecipientId,
         text: textToSend,
         imageUrl: imageToSend,
@@ -1345,7 +1384,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
     // Determine sender attribution name
     let originSenderName = 'Someone';
-    if (forwardTargetMessage.senderId === currentUser.id) {
+    const currentUid = currentUser.uid || currentUser.id;
+    if (forwardTargetMessage.senderId === currentUid || forwardTargetMessage.senderId === currentUser.id) {
       originSenderName = currentUser.name;
     } else if (activeThread && forwardTargetMessage.senderId === (activeThread.isGroup ? activeThread.id : activeThread.participant?.id || '')) {
       originSenderName = (activeThread.isGroup ? activeThread.groupName || '' : activeThread.participant?.name || '');
@@ -1357,10 +1397,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
 
     // Explicit write to Firestore chats/{forwardChatId}/messages
-    const forwardChatId = [currentUser.id, recipientUser.id].sort().join('_');
+    const targetUid = (recipientUser as any)?.uid || recipientUser.id;
+    const forwardChatId = [currentUid, targetUid].sort().join('_');
     addChatMessageToFirestore(forwardChatId, {
-      senderId: currentUser.id,
-      receiverId: recipientUser.id,
+      senderId: currentUid,
+      receiverId: targetUid,
       text: forwardTargetMessage.text,
       imageUrl: forwardTargetMessage.imageUrl,
       voiceNote: forwardTargetMessage.voiceNote,
@@ -1525,15 +1566,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
               </div>
             ) : (
               <AnimatePresence>
-                {activeThread.messages.map((msg) => {
-                  const isOwn = msg.senderId === currentUser.id;
+                {activeThread.messages.map((message) => {
+                  const isMyMessage = message.senderId === currentUser.uid || message.senderId === currentUser.id;
                   return (
                     <MessageBubbleItem
-                      key={msg.id}
-                      msg={msg}
-                      isOwn={isOwn}
+                      key={message.id}
+                      msg={message}
+                      isMyMessage={isMyMessage}
                       activeThreadId={activeThread.id}
-                      currentUserId={currentUser.id}
+                      currentUserId={currentUser.uid || currentUser.id}
                       onDeleteMessage={handleAutoDeleteMessage}
                       onOpenContextMenu={(targetMsg) => {
                         setShowExtendedReactions(false);
@@ -2001,7 +2042,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 {/* Actions list */}
                 <div className="space-y-1 pt-1 border-t border-slate-100">
                   {/* Delete message option (If user's own message) */}
-                  {contextMessage.senderId === currentUser.id && (
+                  {(contextMessage.senderId === currentUser.uid || contextMessage.senderId === currentUser.id) && (
                     <button
                       onClick={() => {
                         setDeleteTargetMessage(contextMessage);
@@ -2731,7 +2772,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         </span>
                       ) : (
                         <>
-                          {thread.lastMessage?.isOwn && <span>You: </span>}
+                          {(thread.lastMessage?.senderId && (thread.lastMessage.senderId === currentUser.uid || thread.lastMessage.senderId === currentUser.id)) && <span>You: </span>}
                           {thread.lastMessage?.isVoice ? (
                             <span className="flex items-center gap-1 text-[#5B9DFF] font-semibold">
                               <Mic className="w-3 h-3" />

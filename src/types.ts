@@ -21,6 +21,7 @@ export interface SocialLink {
 
 export interface User {
   id: string;
+  uid?: string;
   name: string;
   username: string;
   avatar: string;
@@ -159,6 +160,7 @@ export interface Message {
 export interface ChatThread {
   id: string;
   participant?: User;
+  participantIds?: string[];
   isGroup?: boolean;
   groupName?: string;
   groupAvatar?: string;
@@ -172,7 +174,7 @@ export interface ChatThread {
     voiceDuration?: number;
     timestamp: string;
     isRead: boolean;
-    isOwn: boolean;
+    senderId?: string;
     senderName?: string;
   };
   unreadCount: number;

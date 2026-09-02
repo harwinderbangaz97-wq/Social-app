@@ -15,7 +15,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db, ensureFirebaseAuth } from './firebase';
-import { Message, VoiceNoteData, MessagePrivacyMode } from '../types';
+import { Message, VoiceNoteData, MessagePrivacyMode, User } from '../types';
 
 /**
  * Consistent Room Path:
@@ -241,11 +241,13 @@ export const addChatMessageToFirestore = async (
     : payload.text || (payload.imageUrl ? 'Photo attachment' : '');
 
   const chatRoomRef = doc(db, 'chats', chatId);
+  const participantIds = [messageData.senderId, messageData.receiverId].sort();
   await setDoc(
     chatRoomRef,
     {
       id: chatId,
-      participants: [messageData.senderId, messageData.receiverId],
+      participantIds,
+      participants: participantIds,
       lastMessage: {
         text: summaryText,
         imageUrl: payload.imageUrl,
@@ -253,7 +255,7 @@ export const addChatMessageToFirestore = async (
         voiceDuration: payload.voiceNote?.durationSeconds,
         timestamp: 'Just now',
         isRead: false,
-        isOwn: true,
+        senderId: messageData.senderId,
       },
       updatedAt: serverTimestamp(),
       lastActivityMs: now,
@@ -267,7 +269,8 @@ export const addChatMessageToFirestore = async (
     legacyThreadRef,
     {
       id: chatId,
-      participants: [messageData.senderId, messageData.receiverId],
+      participantIds,
+      participants: participantIds,
       lastMessage: {
         text: summaryText,
         imageUrl: payload.imageUrl,
@@ -275,7 +278,7 @@ export const addChatMessageToFirestore = async (
         voiceDuration: payload.voiceNote?.durationSeconds,
         timestamp: 'Just now',
         isRead: false,
-        isOwn: true,
+        senderId: messageData.senderId,
       },
       updatedAt: serverTimestamp(),
     },
@@ -427,23 +430,61 @@ export const toggleMessageReactionInFirestore = async (
 };
 
 /**
+ * Ensures or creates the main chat document at chats/{chatId} with participantIds: [user1Id, user2Id]
+ */
+export const createOrEnsureChatDocument = async (
+  user1Id: string,
+  user2Id: string,
+  extraData?: {
+    lastMessage?: any;
+    participantsInfo?: Record<string, Partial<User>>;
+  }
+): Promise<string> => {
+  const chatId = getChatRoomId(user1Id, user2Id);
+  if (!chatId) return '';
+  await ensureFirebaseAuth();
+  const chatRoomRef = doc(db, 'chats', chatId);
+  const participantIds = [user1Id, user2Id].sort();
+  await setDoc(
+    chatRoomRef,
+    {
+      id: chatId,
+      participantIds,
+      participants: participantIds,
+      updatedAt: serverTimestamp(),
+      lastActivityMs: Date.now(),
+      ...(extraData?.lastMessage ? { lastMessage: extraData.lastMessage } : {}),
+      ...(extraData?.participantsInfo ? { participantsInfo: extraData.participantsInfo } : {}),
+    },
+    { merge: true }
+  ).catch(console.warn);
+  return chatId;
+};
+
+/**
  * Real-time listener for all chat rooms in the chats collection
  */
 export const subscribeToAllChatRooms = (
-  callback: (rooms: Array<{ id: string; participants: string[]; lastMessage?: any; updatedAt?: any }>) => void
+  callback: (rooms: Array<{ id: string; participantIds: string[]; participants: string[]; lastMessage?: any; updatedAt?: any }>) => void
 ): Unsubscribe => {
   try {
     const chatsRef = collection(db, 'chats');
     const unsubscribe = onSnapshot(
       chatsRef,
       (snapshot) => {
-        const rooms: Array<{ id: string; participants: string[]; lastMessage?: any; updatedAt?: any }> = [];
+        const rooms: Array<{ id: string; participantIds: string[]; participants: string[]; lastMessage?: any; updatedAt?: any }> = [];
         snapshot.forEach((docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
+            const pIds = Array.isArray(data.participantIds)
+              ? data.participantIds
+              : Array.isArray(data.participants)
+              ? data.participants
+              : [];
             rooms.push({
               id: docSnap.id,
-              participants: Array.isArray(data.participants) ? data.participants : [],
+              participantIds: pIds,
+              participants: pIds,
               lastMessage: data.lastMessage,
               updatedAt: data.updatedAt,
             });

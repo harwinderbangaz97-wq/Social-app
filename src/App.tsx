@@ -838,14 +838,17 @@ function AppContent() {
     const deterministicId = [currentUser.id, user.id].sort().join('_');
     const existing = chatThreads.find((t) => t.id === deterministicId || t.participant?.id === user.id);
     if (!existing) {
+      const currentUid = currentUser.uid || currentUser.id;
+      const targetUid = user.uid || user.id;
       const newThread: ChatThread = {
         id: deterministicId,
         participant: user,
+        participantIds: [currentUid, targetUid].sort(),
         lastMessage: {
           text: 'Say hello!',
           timestamp: 'Just now',
           isRead: true,
-          isOwn: true,
+          senderId: currentUid,
         },
         unreadCount: 0,
         messages: [],
@@ -867,6 +870,7 @@ function AppContent() {
       currentUser,
       ...users.filter((u) => memberIds.includes(u.id)),
     ];
+    const currentUid = currentUser.uid || currentUser.id;
     const newGroupThread: ChatThread = {
       id: `group_${Date.now()}`,
       isGroup: true,
@@ -874,12 +878,13 @@ function AppContent() {
       groupAvatar: avatar,
       groupDescription: description,
       groupMembers: allGroupMembers,
-      groupAdminIds: [currentUser.id],
+      groupAdminIds: [currentUid],
+      participantIds: allGroupMembers.map(m => m.uid || m.id),
       lastMessage: {
         text: 'Group created. Say hello! 👋',
         timestamp: 'Just now',
         isRead: true,
-        isOwn: true,
+        senderId: currentUid,
         senderName: currentUser.name,
       },
       unreadCount: 0,
@@ -994,6 +999,7 @@ function AppContent() {
         ? `Voice note (0:${voiceNote.durationSeconds < 10 ? '0' : ''}${voiceNote.durationSeconds})`
         : (text || (imageUrl ? 'Photo attachment' : ''));
 
+      const currentUid = currentUser.uid || currentUser.id;
       const lastMessageObj = {
         text: summaryText,
         imageUrl,
@@ -1001,7 +1007,7 @@ function AppContent() {
         voiceDuration: voiceNote?.durationSeconds,
         timestamp: 'Just now',
         isRead: false,
-        isOwn: true,
+        senderId: currentUid,
       };
 
       const existing = prevThreads.find(
@@ -1301,7 +1307,7 @@ function AppContent() {
               text: 'Chat cleared',
               timestamp: 'Just now',
               isRead: true,
-              isOwn: true,
+              senderId: currentUser.uid || currentUser.id,
             },
             unreadCount: 0,
           };
