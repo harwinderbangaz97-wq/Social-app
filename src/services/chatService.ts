@@ -14,18 +14,16 @@ import {
   Unsubscribe,
   Timestamp,
 } from 'firebase/firestore';
-import { db, ensureFirebaseAuth } from './firebase';
-import { Message, VoiceNoteData, MessagePrivacyMode, User } from '../types';
+import { db, auth, ensureFirebaseAuth } from './firebase';
+import { Message, VoiceNoteData, User, MessagePrivacyMode } from '../types';
 
 /**
- * Consistent Room Path:
- * Define chatId dynamically as [currentUser.uid, targetUser.uid].sort().join('_')
- * so both users consistently subscribe to and write to the exact same path:
- * chats/{chatId}/messages
+ * Chat ID Generation:
+ * Always use const chatId = [currentUserId, recipientId].sort().join('_')
  */
-export const getChatRoomId = (userA: string, userB: string): string => {
-  const uidA = (userA || '').trim();
-  const uidB = (userB || '').trim();
+export const getChatRoomId = (currentUserId: string, recipientId: string): string => {
+  const uidA = (currentUserId || '').trim();
+  const uidB = (recipientId || '').trim();
   if (!uidA || !uidB) return '';
   return [uidA, uidB].sort().join('_');
 };
@@ -35,21 +33,21 @@ export const getChatRoomId = (userA: string, userB: string): string => {
  */
 export const normalizeMessage = (id: string, raw: any): Message => {
   let createdAt = Date.now();
-  if (typeof raw?.createdAt === 'number') {
-    createdAt = raw.createdAt;
-  } else if (raw?.createdAtServer instanceof Timestamp) {
-    createdAt = raw.createdAtServer.toMillis();
+  if (raw?.createdAt instanceof Timestamp) {
+    createdAt = raw.createdAt.toMillis();
   } else if (raw?.createdAt?.toMillis && typeof raw.createdAt.toMillis === 'function') {
     createdAt = raw.createdAt.toMillis();
+  } else if (typeof raw?.createdAt === 'number') {
+    createdAt = raw.createdAt;
   } else if (typeof raw?.timestamp === 'number') {
     createdAt = raw.timestamp;
-  } else if (raw?.timestamp?.toMillis && typeof raw.timestamp.toMillis === 'function') {
-    createdAt = raw.timestamp.toMillis();
   }
 
   let timestampStr = 'Just now';
-  if (typeof raw?.timestampStr === 'string' && raw.timestampStr) {
-    timestampStr = raw.timestampStr;
+  if (raw?.createdAt instanceof Timestamp) {
+    timestampStr = raw.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } else if (raw?.createdAt?.toDate && typeof raw.createdAt.toDate === 'function') {
+    timestampStr = raw.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } else if (typeof raw?.timestamp === 'string' && raw.timestamp !== 'Just now') {
     timestampStr = raw.timestamp;
   } else if (createdAt) {
@@ -60,14 +58,13 @@ export const normalizeMessage = (id: string, raw: any): Message => {
     id: id || raw?.id || `m_${Date.now()}`,
     senderId: raw?.senderId || '',
     receiverId: raw?.receiverId || '',
-    text: raw?.text || undefined,
+    text: typeof raw?.text === 'string' ? raw.text : '',
     imageUrl: raw?.imageUrl || undefined,
     voiceNote: raw?.voiceNote || undefined,
     timestamp: timestampStr,
     isRead: Boolean(raw?.isRead),
-    privacyMode: raw?.privacyMode || 'normal',
+    privacyMode: 'normal',
     createdAt,
-    disappearingSeconds: raw?.disappearingSeconds,
     isForwarded: Boolean(raw?.isForwarded),
     forwardedFrom: raw?.forwardedFrom,
     reactions: Array.isArray(raw?.reactions) ? raw.reactions : [],
@@ -76,62 +73,8 @@ export const normalizeMessage = (id: string, raw: any): Message => {
 };
 
 /**
- * In-memory cache for loaded chat messages across component mounts
- * Prevents empty array flashes when switching tabs or navigating screens
- */
-const chatMessagesCache = new Map<string, Message[]>();
-
-export const getCachedChatMessages = (chatId: string): Message[] => {
-  return chatMessagesCache.get(chatId) || [];
-};
-
-export const setCachedChatMessages = (chatId: string, messages: Message[]): void => {
-  chatMessagesCache.set(chatId, messages);
-};
-
-/**
- * Clear Session Side-effects:
- * Loads existing message history directly from Firestore chats/{chatId}/messages
- * rather than starting with an empty array.
- */
-export const loadChatHistory = async (chatId: string): Promise<Message[]> => {
-  if (!chatId) return [];
-  try {
-    await ensureFirebaseAuth();
-    const messagesRef = collection(db, 'chats', chatId, 'messages');
-    let snapshot;
-    try {
-      const q = query(messagesRef, orderBy('createdAt', 'asc'));
-      snapshot = await getDocs(q);
-    } catch {
-      try {
-        const qFallback = query(messagesRef, orderBy('timestamp', 'asc'));
-        snapshot = await getDocs(qFallback);
-      } catch {
-        snapshot = await getDocs(messagesRef);
-      }
-    }
-
-    const messages: Message[] = [];
-    snapshot.forEach((docSnap) => {
-      if (docSnap.exists()) {
-        messages.push(normalizeMessage(docSnap.id, docSnap.data()));
-      }
-    });
-
-    messages.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    setCachedChatMessages(chatId, messages);
-    return messages;
-  } catch (error) {
-    console.warn('Error loading chat history from Firestore:', error);
-    return getCachedChatMessages(chatId);
-  }
-};
-
-/**
- * Firestore Real-time Listener:
- * Attaches an onSnapshot listener to chats/{chatId}/messages sorted by timestamp ascending.
- * Maps snapshot docs directly to messages array.
+ * Real-time listener for messages in chats/{chatId}/messages
+ * Queries ordered by createdAt ascending
  */
 export const subscribeToChatMessages = (
   chatId: string,
@@ -141,36 +84,23 @@ export const subscribeToChatMessages = (
 
   try {
     const messagesRef = collection(db, 'chats', chatId, 'messages');
-    // Primary query ordered by createdAt ascending
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
 
     const unsubscribe = onSnapshot(
       q,
-      { includeMetadataChanges: true },
       (snapshot) => {
         const messages: Message[] = snapshot.docs.map((docSnap) => {
-          const normalized = normalizeMessage(docSnap.id, docSnap.data());
-          normalized.isDelivered = !docSnap.metadata.hasPendingWrites;
-          return normalized;
+          const data = docSnap.data({ serverTimestamps: 'estimate' });
+          return normalizeMessage(docSnap.id, {
+            ...data,
+            isDelivered: !snapshot.metadata.hasPendingWrites,
+          });
         });
 
-        messages.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-        setCachedChatMessages(chatId, messages);
         callback(messages);
       },
       (error) => {
-        console.warn('Real-time chat messages listener on createdAt fallback to timestamp:', error);
-        try {
-          const qFallback = query(messagesRef, orderBy('timestamp', 'asc'));
-          return onSnapshot(qFallback, (snapshot) => {
-            const messages = snapshot.docs.map((docSnap) => normalizeMessage(docSnap.id, docSnap.data()));
-            messages.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-            setCachedChatMessages(chatId, messages);
-            callback(messages);
-          });
-        } catch (err) {
-          console.warn('Fallback onSnapshot error:', err);
-        }
+        console.warn('Real-time chat messages listener error:', error);
       }
     );
 
@@ -183,8 +113,11 @@ export const subscribeToChatMessages = (
 
 /**
  * Explicit Write to Firestore using addDoc:
- * Do NOT use Local State Pushes (setMessages([...messages, newMessage])).
- * Instead, perform an explicit write using addDoc(collection(db, 'chats', chatId, 'messages'), messageData).
+ * Every message document in Firestore MUST have:
+ * - text (string)
+ * - senderId (string, containing auth.currentUser.uid)
+ * - receiverId (string)
+ * - createdAt (fieldValue serverTimestamp())
  */
 export const addChatMessageToFirestore = async (
   chatId: string,
@@ -194,54 +127,51 @@ export const addChatMessageToFirestore = async (
     text?: string;
     imageUrl?: string;
     voiceNote?: VoiceNoteData;
-    privacyMode?: MessagePrivacyMode;
     isForwarded?: boolean;
     forwardedFrom?: string;
-    timestamp?: number;
-    disappearingSeconds?: number;
+    privacyMode?: MessagePrivacyMode;
   }
 ): Promise<string> => {
   if (!chatId) throw new Error('Missing chatId for addChatMessageToFirestore');
   await ensureFirebaseAuth();
-  const now = Date.now();
 
-  const disappearingSeconds =
-    messageData.disappearingSeconds !== undefined
-      ? messageData.disappearingSeconds
-      : messageData.privacyMode === 'immediate'
-      ? 5
-      : messageData.privacyMode === 'after_seen'
-      ? 6
-      : undefined;
+  const senderId = auth.currentUser?.uid || messageData.senderId;
+  const receiverId = messageData.receiverId;
+  const text = messageData.text || '';
 
-  const payload: any = {
-    senderId: messageData.senderId,
-    receiverId: messageData.receiverId,
-    text: messageData.text || null,
-    imageUrl: messageData.imageUrl || null,
-    voiceNote: messageData.voiceNote || null,
-    timestamp: messageData.timestamp || now,
-    createdAt: now,
-    createdAtServer: serverTimestamp(),
-    timestampStr: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  const messageObj: any = {
+    text,
+    senderId,
+    receiverId,
+    createdAt: serverTimestamp(),
     isRead: false,
-    privacyMode: messageData.privacyMode || 'normal',
-    disappearingSeconds: disappearingSeconds ?? null,
-    isForwarded: Boolean(messageData.isForwarded),
-    forwardedFrom: messageData.forwardedFrom || null,
     reactions: [],
   };
 
+  if (messageData.imageUrl) {
+    messageObj.imageUrl = messageData.imageUrl;
+  }
+  if (messageData.voiceNote) {
+    messageObj.voiceNote = messageData.voiceNote;
+  }
+  if (messageData.isForwarded) {
+    messageObj.isForwarded = true;
+    if (messageData.forwardedFrom) {
+      messageObj.forwardedFrom = messageData.forwardedFrom;
+    }
+  }
+
+  // Perform ONLY addDoc on chats/{chatId}/messages
   const messagesRef = collection(db, 'chats', chatId, 'messages');
-  const docRef = await addDoc(messagesRef, payload);
+  const docRef = await addDoc(messagesRef, messageObj);
 
   // Update room parent document at chats/{chatId} for thread listings and previews
-  const summaryText = payload.voiceNote
-    ? `Voice note (0:${payload.voiceNote.durationSeconds < 10 ? '0' : ''}${payload.voiceNote.durationSeconds})`
-    : payload.text || (payload.imageUrl ? 'Photo attachment' : '');
+  const summaryText = messageObj.voiceNote
+    ? `Voice note (0:${messageObj.voiceNote.durationSeconds < 10 ? '0' : ''}${messageObj.voiceNote.durationSeconds})`
+    : messageObj.text || (messageObj.imageUrl ? 'Photo attachment' : '');
 
   const chatRoomRef = doc(db, 'chats', chatId);
-  const participantIds = [messageData.senderId, messageData.receiverId].sort();
+  const participantIds = [senderId, receiverId].sort();
   await setDoc(
     chatRoomRef,
     {
@@ -250,40 +180,18 @@ export const addChatMessageToFirestore = async (
       participants: participantIds,
       lastMessage: {
         text: summaryText,
-        imageUrl: payload.imageUrl,
-        isVoice: !!payload.voiceNote,
-        voiceDuration: payload.voiceNote?.durationSeconds,
+        imageUrl: messageObj.imageUrl || null,
+        isVoice: !!messageObj.voiceNote,
+        voiceDuration: messageObj.voiceNote?.durationSeconds || null,
         timestamp: 'Just now',
         isRead: false,
-        senderId: messageData.senderId,
+        senderId,
       },
       updatedAt: serverTimestamp(),
-      lastActivityMs: now,
+      lastActivityMs: Date.now(),
     },
     { merge: true }
   ).catch(console.warn);
-
-  // Mirror to chat_threads for backward compatibility with existing thread indexes
-  const legacyThreadRef = doc(db, 'chat_threads', chatId);
-  await setDoc(
-    legacyThreadRef,
-    {
-      id: chatId,
-      participantIds,
-      participants: participantIds,
-      lastMessage: {
-        text: summaryText,
-        imageUrl: payload.imageUrl,
-        isVoice: !!payload.voiceNote,
-        voiceDuration: payload.voiceNote?.durationSeconds,
-        timestamp: 'Just now',
-        isRead: false,
-        senderId: messageData.senderId,
-      },
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  ).catch(() => {});
 
   return docRef.id;
 };
@@ -298,36 +206,17 @@ export const sendChatMessage = async (
     text?: string;
     imageUrl?: string;
     voiceNote?: VoiceNoteData;
-    privacyMode?: MessagePrivacyMode;
     isForwarded?: boolean;
     forwardedFrom?: string;
+    privacyMode?: MessagePrivacyMode;
   }
-): Promise<Message> => {
+): Promise<string> => {
   const chatId = getChatRoomId(senderId, receiverId);
-  const now = Date.now();
-  const docId = await addChatMessageToFirestore(chatId, {
+  return await addChatMessageToFirestore(chatId, {
     senderId,
     receiverId,
     ...payload,
   });
-
-  return {
-    id: docId,
-    senderId,
-    receiverId,
-    text: payload.text,
-    imageUrl: payload.imageUrl,
-    voiceNote: payload.voiceNote,
-    timestamp: 'Just now',
-    isRead: false,
-    privacyMode: payload.privacyMode || 'normal',
-    createdAt: now,
-    disappearingSeconds: payload.privacyMode === 'immediate' ? 5 : (payload.privacyMode === 'after_seen' ? 6 : undefined),
-    isForwarded: payload.isForwarded,
-    forwardedFrom: payload.forwardedFrom,
-    reactions: [],
-    isDelivered: true,
-  };
 };
 
 /**
@@ -353,7 +242,7 @@ export const markMessageAsReadInFirestore = async (
 };
 
 /**
- * Deletes a message in chats/{chatId}/messages/{messageId}
+ * Deletes a message in chats/{chatId}/messages/{messageId} upon user manual confirmation
  */
 export const deleteChatMessageFromFirestore = async (
   chatId: string,

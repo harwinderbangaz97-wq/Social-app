@@ -72,6 +72,7 @@ import {
   signOut,
   followUser,
   unfollowUser,
+  DEFAULT_AVATAR,
 } from './services/firebase';
 import {
   sendChatMessage,
@@ -92,7 +93,7 @@ const EMPTY_USER: User = {
   id: '',
   name: '',
   username: '',
-  avatar: '',
+  avatar: DEFAULT_AVATAR,
   bio: '',
   location: '',
   website: '',
@@ -145,7 +146,7 @@ function AppContent() {
     id: '',
     name: '',
     username: '',
-    avatar: '',
+    avatar: DEFAULT_AVATAR,
     bio: '',
     location: '',
     website: '',
@@ -275,13 +276,18 @@ function AppContent() {
         try {
           const remoteUser = await getUserProfileFromFirestore(user.uid);
           if (remoteUser) {
-            setCurrentUser((prev) => ({ ...prev, ...remoteUser }));
+            setCurrentUser((prev) => ({
+              ...prev,
+              ...remoteUser,
+              avatar: remoteUser.avatar || prev.avatar || DEFAULT_AVATAR,
+            }));
           } else {
              // If no profile exists, maybe it's a new user, initialize with Firebase info
              setCurrentUser(prev => ({
                 ...prev,
                 id: user.uid,
-                email: user.email || prev.email
+                email: user.email || prev.email,
+                avatar: prev.avatar || DEFAULT_AVATAR,
              }));
           }
         } catch (err) {
