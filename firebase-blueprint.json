@@ -46,6 +46,30 @@
         "mediaUrl": { "type": "string" }
       },
       "required": ["id", "userId", "mediaUrl"]
+    },
+    "chats": {
+      "title": "Chat",
+      "description": "1-on-1 and group conversation rooms",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "participants": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "participants"]
+    },
+    "messages": {
+      "title": "Message",
+      "description": "Chat message items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "senderId", "receiverId"]
     }
   }
 }

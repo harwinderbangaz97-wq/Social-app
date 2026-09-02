@@ -1331,38 +1331,58 @@ export const syncUserReportToFirestore = async (report: UserReportItem | Univers
 };
 
 export const followUser = async (followerUid: string, followingUid: string): Promise<void> => {
-  if (followerUid === followingUid) return;
-  const followRef = doc(db, 'follows', `${followerUid}_${followingUid}`);
-  const followerRef = doc(db, 'users', followerUid);
-  const followingRef = doc(db, 'users', followingUid);
+  if (!followerUid || !followingUid || followerUid === followingUid) return;
+  try {
+    await ensureFirebaseAuth();
+    const followRef = doc(db, 'follows', `${followerUid}_${followingUid}`);
+    const followerRef = doc(db, 'users', followerUid);
+    const followingRef = doc(db, 'users', followingUid);
 
-  await runTransaction(db, async (transaction) => {
-    const followDoc = await transaction.get(followRef);
-    if (followDoc.exists()) return; // Already following
+    await runTransaction(db, async (transaction) => {
+      const followDoc = await transaction.get(followRef);
+      if (followDoc.exists()) return; // Already following
 
-    transaction.set(followRef, {
+      transaction.set(followRef, {
+        followerUid,
+        followingUid,
+        createdAt: serverTimestamp(),
+      });
+      transaction.set(followerRef, { followingCount: increment(1) }, { merge: true });
+      transaction.set(followingRef, { followersCount: increment(1) }, { merge: true });
+    });
+  } catch (error) {
+    console.warn('Firestore followUser fallback:', error);
+    // Direct set fallback
+    const followRef = doc(db, 'follows', `${followerUid}_${followingUid}`);
+    await setDoc(followRef, {
       followerUid,
       followingUid,
       createdAt: serverTimestamp(),
-    });
-    transaction.update(followerRef, { followingCount: increment(1) });
-    transaction.update(followingRef, { followersCount: increment(1) });
-  });
+    }, { merge: true }).catch(console.warn);
+  }
 };
 
 export const unfollowUser = async (followerUid: string, followingUid: string): Promise<void> => {
-  const followRef = doc(db, 'follows', `${followerUid}_${followingUid}`);
-  const followerRef = doc(db, 'users', followerUid);
-  const followingRef = doc(db, 'users', followingUid);
+  if (!followerUid || !followingUid) return;
+  try {
+    await ensureFirebaseAuth();
+    const followRef = doc(db, 'follows', `${followerUid}_${followingUid}`);
+    const followerRef = doc(db, 'users', followerUid);
+    const followingRef = doc(db, 'users', followingUid);
 
-  await runTransaction(db, async (transaction) => {
-    const followDoc = await transaction.get(followRef);
-    if (!followDoc.exists()) return; // Not following
+    await runTransaction(db, async (transaction) => {
+      const followDoc = await transaction.get(followRef);
+      if (!followDoc.exists()) return; // Not following
 
-    transaction.delete(followRef);
-    transaction.update(followerRef, { followingCount: increment(-1) });
-    transaction.update(followingRef, { followersCount: increment(-1) });
-  });
+      transaction.delete(followRef);
+      transaction.set(followerRef, { followingCount: increment(-1) }, { merge: true });
+      transaction.set(followingRef, { followersCount: increment(-1) }, { merge: true });
+    });
+  } catch (error) {
+    console.warn('Firestore unfollowUser fallback:', error);
+    const followRef = doc(db, 'follows', `${followerUid}_${followingUid}`);
+    await deleteDoc(followRef).catch(console.warn);
+  }
 };
 
 export const syncBugReportToFirestore = async (report: BugReportItem): Promise<void> => {

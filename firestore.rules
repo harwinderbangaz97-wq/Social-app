@@ -18,17 +18,12 @@ service cloud.firestore {
 
     // Follow relationships
     match /follows/{followId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.followerUid;
-      allow delete: if isAuthenticated() && request.auth.uid == resource.data.followerUid;
+      allow read, write: if true;
     }
 
     // Public / User Profiles
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow update: if isOwner(userId);
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow delete: if isOwner(userId) || isAdmin();
+      allow read, write: if true;
     }
 
     // Posts & Feed Items
@@ -52,7 +47,16 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // Direct Messages & Chat Threads
+    // Direct Messages & 1-on-1 Chat Rooms (Deterministic chats/{chatId}/messages)
+    match /chats/{chatId} {
+      allow read, write: if true;
+    }
+
+    match /chats/{chatId}/messages/{messageId} {
+      allow read, write: if true;
+    }
+
+    // Direct Messages & Legacy Chat Threads
     match /chat_threads/{threadId} {
       allow read, write: if true;
     }

@@ -57,6 +57,13 @@ import { usePermissionAndMedia } from '../context/PermissionAndMediaContext';
 import { audioRecorder } from '../services/audioRecorderService';
 import { validateMessageDeletion, getMessagePrivacySettings } from '../data/messagePrivacyService';
 import { getIndividualChatSettings, saveIndividualChatSettings } from '../services/individualChatSettingsService';
+import {
+  getChatRoomId,
+  subscribeToChatMessages,
+  markMessageAsReadInFirestore,
+  deleteChatMessageFromFirestore,
+  toggleMessageReactionInFirestore,
+} from '../services/chatService';
 
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
 export const MORE_REACTIONS = [
@@ -853,11 +860,115 @@ export const ChatView: React.FC<ChatViewProps> = ({
     });
   }, [threads, allUsers]);
 
-  const rawActiveThread = activeChatUserId
-    ? dynamicThreads.find((t) => t.participant?.id === activeChatUserId || t.id === activeChatUserId)
-    : null;
+  const isGroupThread = Boolean(
+    activeChatUserId?.startsWith('g_') ||
+    activeChatUserId?.startsWith('group_') ||
+    threads.find(t => t.id === activeChatUserId)?.isGroup
+  );
 
-  const activeThread = rawActiveThread;
+  const recipientUserId = useMemo(() => {
+    if (!activeChatUserId || isGroupThread) return '';
+    if (activeChatUserId.includes('_')) {
+      return activeChatUserId.split('_').find(id => id !== currentUser.id) || activeChatUserId;
+    }
+    return activeChatUserId;
+  }, [activeChatUserId, isGroupThread, currentUser.id]);
+
+  const rawActiveThread = useMemo(() => {
+    if (!activeChatUserId) return null;
+    return dynamicThreads.find(
+      (t) =>
+        t.id === activeChatUserId ||
+        t.participant?.id === activeChatUserId ||
+        (recipientUserId && (t.participant?.id === recipientUserId || (!t.isGroup && t.id.includes(recipientUserId))))
+    ) || null;
+  }, [activeChatUserId, dynamicThreads, recipientUserId]);
+
+  const resolvedParticipant = useMemo(() => {
+    if (isGroupThread) return undefined;
+    if (rawActiveThread?.participant) {
+      const live = allUsers?.find(u => u.id === rawActiveThread.participant!.id);
+      return live || rawActiveThread.participant;
+    }
+    if (recipientUserId) {
+      const userMatch = allUsers?.find(u => u.id === recipientUserId);
+      if (userMatch) return userMatch;
+      return {
+        id: recipientUserId,
+        name: 'Contact',
+        username: 'contact',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        isOnline: true,
+        followersCount: 0,
+        followingCount: 0,
+        postsCount: 0,
+        isVerified: false,
+        interests: [],
+        socialLinks: [],
+        birthday: '',
+        mobileNumber: '',
+        email: '',
+        twoFactorEnabled: false,
+        twoFactorMethod: 'authenticator',
+        usernameLastChangedAt: new Date().toISOString(),
+        isFollowing: false,
+      } as User;
+    }
+    return undefined;
+  }, [rawActiveThread, recipientUserId, allUsers, isGroupThread]);
+
+  const deterministicChatId = useMemo(() => {
+    if (!activeChatUserId) return '';
+    if (isGroupThread) return rawActiveThread?.id || activeChatUserId;
+    const targetId = resolvedParticipant?.id || recipientUserId || activeChatUserId;
+    return getChatRoomId(currentUser.id, targetId);
+  }, [activeChatUserId, isGroupThread, rawActiveThread?.id, resolvedParticipant?.id, recipientUserId, currentUser.id]);
+
+  // Universal Real-time Firestore Sync (onSnapshot on chats/{chatId}/messages)
+  const [liveFirestoreMessages, setLiveFirestoreMessages] = useState<Message[]>([]);
+
+  useEffect(() => {
+    if (!deterministicChatId) {
+      setLiveFirestoreMessages([]);
+      return;
+    }
+
+    const unsubscribe = subscribeToChatMessages(deterministicChatId, (incoming) => {
+      setLiveFirestoreMessages(incoming);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [deterministicChatId]);
+
+  const activeThread = useMemo<ChatThread | null>(() => {
+    if (!activeChatUserId) return null;
+
+    const baseThread: ChatThread = rawActiveThread || {
+      id: deterministicChatId,
+      participant: resolvedParticipant,
+      unreadCount: 0,
+      messages: [],
+      lastMessage: {
+        text: '',
+        timestamp: '',
+        isRead: true,
+        isOwn: false,
+      },
+    };
+
+    const combinedMessages = liveFirestoreMessages.length > 0
+      ? liveFirestoreMessages
+      : (baseThread.messages || []);
+
+    return {
+      ...baseThread,
+      id: deterministicChatId || baseThread.id,
+      participant: resolvedParticipant || baseThread.participant,
+      messages: combinedMessages,
+    };
+  }, [activeChatUserId, rawActiveThread, deterministicChatId, resolvedParticipant, liveFirestoreMessages]);
 
   // Auto scroll to bottom when messages update or typing state changes
   useEffect(() => {
@@ -866,16 +977,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
   }, [activeThread?.messages, activeThread?.isTyping]);
 
-  // When active thread changes or opens, mark unread incoming messages as seen
+  // When active thread changes or opens, mark unread incoming messages as seen in Firestore
   useEffect(() => {
-    if (activeThread && onMarkMessageSeen) {
+    if (activeThread && deterministicChatId) {
       activeThread.messages.forEach((m) => {
         if (m.receiverId === currentUser.id && !m.isRead) {
-          onMarkMessageSeen(activeThread.id, m.id);
+          markMessageAsReadInFirestore(deterministicChatId, m.id).catch(console.warn);
+          if (onMarkMessageSeen) {
+            onMarkMessageSeen(activeThread.id, m.id);
+          }
         }
       });
     }
-  }, [activeThread?.id, activeThread?.messages, currentUser.id, onMarkMessageSeen]);
+  }, [activeThread?.id, activeThread?.messages, currentUser.id, deterministicChatId, onMarkMessageSeen]);
 
   // Prune messages according to individual chat setting (48 hours or 1 week)
   useEffect(() => {
@@ -970,8 +1084,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
       effectivePrivacyMode = 'after_seen';
     }
 
+    const targetRecipientId = activeThread.isGroup
+      ? activeThread.id
+      : (resolvedParticipant?.id || recipientUserId || activeThread.participant?.id || activeChatUserId || '');
+
     onSendMessage(
-      (activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''),
+      targetRecipientId,
       undefined,
       undefined,
       voiceData,
@@ -997,8 +1115,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
       effectivePrivacyMode = 'after_seen';
     }
 
+    const targetRecipientId = activeThread.isGroup
+      ? activeThread.id
+      : (resolvedParticipant?.id || recipientUserId || activeThread.participant?.id || activeChatUserId || '');
+
     onSendMessage(
-      (activeThread.isGroup ? activeThread.id : activeThread.participant?.id || ''),
+      targetRecipientId,
       inputText.trim() || undefined,
       attachedImage || undefined,
       undefined,

@@ -73,6 +73,14 @@ import {
   followUser,
   unfollowUser,
 } from './services/firebase';
+import {
+  sendChatMessage,
+  getChatRoomId,
+  deleteChatMessageFromFirestore,
+  toggleMessageReactionInFirestore,
+  markMessageAsReadInFirestore,
+  subscribeToAllChatRooms,
+} from './services/chatService';
 
 const HomeTab = lazy(() => import('./components/tabs/HomeTab').then(m => ({ default: m.HomeTab })));
 const SearchTab = lazy(() => import('./components/tabs/SearchTab').then(m => ({ default: m.SearchTab })));
@@ -786,21 +794,42 @@ function AppContent() {
 
   // Follow / Unfollow user
   const handleToggleFollow = async (targetUserId: string) => {
-    if (!currentUser || !currentUser.id) return;
+    if (!currentUser || !currentUser.id || !targetUserId) return;
     
-    const isCurrentlyFollowing = users.find(u => u.id === targetUserId)?.isFollowing;
+    const targetUser = users.find(u => u.id === targetUserId);
+    const isCurrentlyFollowing = Boolean(targetUser?.isFollowing);
     
-    try {
-        if (isCurrentlyFollowing) {
-            await unfollowUser(currentUser.id, targetUserId);
-            showToast(`Unfollowed user`);
-        } else {
-            await followUser(currentUser.id, targetUserId);
-            showToast(`Following user`);
+    // Optimistic UI update
+    setUsers((prevUsers) =>
+      prevUsers.map((u) => {
+        if (u.id === targetUserId) {
+          const nextFollowing = !isCurrentlyFollowing;
+          return {
+            ...u,
+            isFollowing: nextFollowing,
+            followersCount: Math.max(0, (u.followersCount || 0) + (nextFollowing ? 1 : -1)),
+          };
         }
+        return u;
+      })
+    );
+
+    setCurrentUser((prev) => ({
+      ...prev,
+      followingCount: Math.max(0, (prev.followingCount || 0) + (isCurrentlyFollowing ? -1 : 1)),
+    }));
+
+    try {
+      if (isCurrentlyFollowing) {
+        await unfollowUser(currentUser.id, targetUserId);
+        showToast('Unfollowed user');
+      } else {
+        await followUser(currentUser.id, targetUserId);
+        showToast('Following user');
+      }
     } catch (err) {
-        console.error("Follow error:", err);
-        showToast("Error updating follow status");
+      console.error('Follow error:', err);
+      showToast('Error updating follow status');
     }
   };
 
@@ -960,15 +989,28 @@ function AppContent() {
       forwardedFrom,
     };
 
+    const deterministicId = [currentUser.id, receiverId].sort().join('_');
+
+    // Send to Firestore chats/{chatId}/messages
+    sendChatMessage(currentUser.id, receiverId, {
+      text,
+      imageUrl,
+      voiceNote,
+      privacyMode,
+      isForwarded,
+      forwardedFrom,
+    }).catch(console.warn);
+
     setChatThreads((prevThreads) => {
       const existing = prevThreads.find(
-        (t) => t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId))
+        (t) => t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId)) || t.id === deterministicId
       );
       if (existing) {
         return prevThreads.map((thread) => {
-          if (thread.id === receiverId || thread.participant?.id === receiverId || (!thread.isGroup && thread.id.includes(receiverId))) {
+          if (thread.id === receiverId || thread.participant?.id === receiverId || (!thread.isGroup && thread.id.includes(receiverId)) || thread.id === deterministicId) {
             const updatedThread = {
               ...thread,
+              id: thread.isGroup ? thread.id : deterministicId,
               lastMessage: {
                 text: voiceNote
                   ? `Voice note (0:${voiceNote.durationSeconds < 10 ? '0' : ''}${voiceNote.durationSeconds})`
@@ -1013,7 +1055,6 @@ function AppContent() {
           isFollowing: false,
         };
 
-      const deterministicId = [currentUser.id, receiverId].sort().join('_');
       const newThread: ChatThread = {
         id: deterministicId,
         participant: targetUser,
@@ -1093,9 +1134,16 @@ function AppContent() {
 
   // Delete message for everyone in a thread
   const handleDeleteMessage = (threadId: string, messageId: string) => {
+    const isGroup = threadId.startsWith('g_') || threadId.startsWith('group_');
+    const deterministicChatId = isGroup
+      ? threadId
+      : (threadId.includes('_') ? threadId : getChatRoomId(currentUser.id, threadId));
+
+    deleteChatMessageFromFirestore(deterministicChatId, messageId).catch(console.warn);
+
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
+        if (thread.id === threadId || thread.id === deterministicChatId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
           const updated = updateThreadAfterMessageDeletion(thread, messageId);
           syncChatThreadToFirestore(updated).catch(console.warn);
           return updated;
@@ -1107,9 +1155,16 @@ function AppContent() {
 
   // Mark message as seen by recipient and timestamp it
   const handleMarkMessageSeen = (threadId: string, messageId: string) => {
+    const isGroup = threadId.startsWith('g_') || threadId.startsWith('group_');
+    const deterministicChatId = isGroup
+      ? threadId
+      : (threadId.includes('_') ? threadId : getChatRoomId(currentUser.id, threadId));
+
+    markMessageAsReadInFirestore(deterministicChatId, messageId).catch(console.warn);
+
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
+        if (thread.id === threadId || thread.id === deterministicChatId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
           let updatedMessage: Message | null = null;
           const updatedMessages = thread.messages.map((m) => {
             if (m.id === messageId && !m.isRead) {
@@ -1140,9 +1195,16 @@ function AppContent() {
 
   // Toggle or update reaction on a message (enforces 1 reaction per user per message, allows changing anytime or tapping same to remove)
   const handleToggleMessageReaction = (threadId: string, messageId: string, emoji: string) => {
+    const isGroup = threadId.startsWith('g_') || threadId.startsWith('group_');
+    const deterministicChatId = isGroup
+      ? threadId
+      : (threadId.includes('_') ? threadId : getChatRoomId(currentUser.id, threadId));
+
+    toggleMessageReactionInFirestore(deterministicChatId, messageId, currentUser.id, emoji).catch(console.warn);
+
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
+        if (thread.id === threadId || thread.id === deterministicChatId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
           const updatedMessages = thread.messages.map((msg) => {
             if (msg.id === messageId) {
               let currentReactions = msg.reactions ? [...msg.reactions] : [];
