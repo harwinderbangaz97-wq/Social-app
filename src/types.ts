@@ -83,6 +83,8 @@ export interface Post {
   isLiked?: boolean;
   isDisliked?: boolean;
   userReaction?: 'like' | 'dislike' | null;
+  likes?: string[];
+  dislikes?: string[];
   isSaved?: boolean;
   isAutoRemoved?: boolean;
   comments: Comment[];

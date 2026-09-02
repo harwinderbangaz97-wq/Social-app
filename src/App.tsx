@@ -572,21 +572,8 @@ function AppContent() {
         }
       }
 
-      // Check Community Post Protection rule:
-      // When a post reaches 1,000 or more Likes AND Dislikes > Likes, remove post immediately.
-      // Posts with < 1,000 Likes are never automatically removed under this rule.
-      const shouldAutoRemove = nextLikesCount >= 1000 && nextDislikesCount > nextLikesCount;
-
-      if (shouldAutoRemove) {
-        removedPostInfo = {
-          post: target,
-          authorId: target.userId || target.user?.id || '',
-          wasRemoved: true,
-        };
-        deletePostFromFirestore(postId).catch(console.warn);
-        // Filter out this post from active feed
-        return prevPosts.filter((p) => p.id !== postId);
-      }
+      // Disabled auto-removal logic as requested
+      const shouldAutoRemove = false;
 
       // Sync reaction directly to Firestore
       updatePostInFirestore(postId, {
@@ -750,21 +737,23 @@ function AppContent() {
   const handlePublishPost = async (
     newPostData: Omit<
       Post,
-      'id' | 'likesCount' | 'dislikesCount' | 'commentsCount' | 'isLiked' | 'isDisliked' | 'userReaction' | 'isSaved' | 'isAutoRemoved' | 'comments' | 'timestamp'
+      'id' | 'likesCount' | 'dislikesCount' | 'commentsCount' | 'isLiked' | 'isDisliked' | 'userReaction' | 'isSaved' | 'isAutoRemoved' | 'comments' | 'timestamp' | 'likes' | 'dislikes'
     >
   ) => {
     const now = Date.now();
     const createdPost: Post = {
       ...newPostData,
       id: `post_${now}`,
-      timestamp: 'Just now',
+      timestamp: new Date().toISOString(),
       createdAtMs: now,
-      likesCount: 1,
+      likesCount: 0,
       dislikesCount: 0,
       commentsCount: 0,
-      isLiked: true,
+      isLiked: false,
       isDisliked: false,
-      userReaction: 'like',
+      userReaction: null,
+      likes: [],
+      dislikes: [],
       isAutoRemoved: false,
       comments: [],
     };
