@@ -145,6 +145,7 @@ export interface Message {
   voiceNote?: VoiceNoteData;
   timestamp: string;
   isRead: boolean;
+  isDelivered?: boolean;
   privacyMode?: MessagePrivacyMode;
   createdAt?: number;
   seenAt?: number;

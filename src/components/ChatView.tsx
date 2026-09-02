@@ -361,10 +361,14 @@ const MessageBubbleItem: React.FC<{
       <div className="flex items-center gap-1.5 mt-1 px-1 text-[10px] text-slate-500 font-semibold drop-shadow-xs">
         <span className="bg-white/70 backdrop-blur-xs px-1.5 py-0.2 rounded-md">{msg.timestamp}</span>
         {isOwn && (
-          <span title={msg.isRead ? 'Seen by recipient' : 'Delivered'}>
-            <CheckCheck
-              className={`w-3 h-3 ${msg.isRead ? 'text-[#5B9DFF]' : 'text-slate-400'}`}
-            />
+          <span title={msg.isRead ? 'Seen by recipient' : (msg.isDelivered ? 'Delivered' : 'Sent')}>
+            {msg.isRead || msg.isDelivered ? (
+              <CheckCheck
+                className={`w-3 h-3 ${msg.isRead ? 'text-[#5B9DFF]' : 'text-slate-400'}`}
+              />
+            ) : (
+              <Check className="w-3 h-3 text-slate-400" />
+            )}
           </span>
         )}
 
@@ -467,7 +471,7 @@ const TypingIndicatorBubble: React.FC<{ participant: User }> = ({ participant })
 };
 
 export const ChatView: React.FC<ChatViewProps> = ({
-  threads,
+  threads: rawThreads,
   currentUser,
   activeChatUserId,
   onSelectThread,
@@ -491,6 +495,24 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onLeaveGroup,
   allUsers = [],
 }) => {
+  // Dynamically resolve participant names and avatars from real-time allUsers 
+  // since the sender's local db stores the other user as participant, but when downloaded by the recipient, 
+  // it might still say the other user was themselves if we don't resolve it!
+  const threads = useMemo(() => {
+    return rawThreads.map(thread => {
+      if (thread.isGroup || !allUsers || !allUsers.length) return thread;
+      // Resolve the other participant ID dynamically for 1-on-1 chats using the deterministic ID
+      const otherUserId = thread.id.split('_').find(id => id !== currentUser.id);
+      if (otherUserId) {
+        const otherUser = allUsers.find(u => u.id === otherUserId);
+        if (otherUser) {
+          return { ...thread, participant: otherUser };
+        }
+      }
+      return thread;
+    });
+  }, [rawThreads, allUsers, currentUser.id]);
+
   const {
     navState,
     setChatAttachmentOpen,

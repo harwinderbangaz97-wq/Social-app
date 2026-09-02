@@ -1100,11 +1100,16 @@ export const subscribeToChatMessages = (threadId: string, callback: (messages: M
     if (!threadId) return () => {};
     const messagesRef = collection(db, 'chat_threads', threadId, 'messages');
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
       const msgs: Message[] = [];
       snapshot.forEach((docSnap) => {
         if (docSnap.exists()) {
-          msgs.push({ id: docSnap.id, ...docSnap.data() } as Message);
+          const data = docSnap.data();
+          msgs.push({ 
+            id: docSnap.id, 
+            ...data,
+            isDelivered: !docSnap.metadata.hasPendingWrites
+          } as Message);
         }
       });
       callback(msgs);

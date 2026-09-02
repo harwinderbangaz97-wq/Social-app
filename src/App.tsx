@@ -330,11 +330,31 @@ function AppContent() {
           prevThreads.forEach((t) => map.set(t.id, t));
           remoteThreads.forEach((t) => {
             if (t && t.id) {
-              const existing = map.get(t.id);
-              if (existing && existing.messages && existing.messages.length > 0) {
-                 t.messages = existing.messages;
+              const currentUid = auth.currentUser?.uid || currentUser.id;
+              // Filter to only include threads for the current user
+              const involvesUser = t.isGroup
+                ? t.groupMembers?.some((m) => m.id === currentUid)
+                : t.id.includes(currentUid);
+
+              if (involvesUser) {
+                const existing = map.get(t.id);
+                if (existing && existing.messages && existing.messages.length > 0) {
+                   t.messages = existing.messages;
+                }
+                
+                // Dynamically resolve participant for 1-on-1 chats
+                if (!t.isGroup && users.length > 0) {
+                  const otherUserId = t.id.split('_').find(id => id !== currentUid);
+                  if (otherUserId) {
+                    const otherUser = users.find(u => u.id === otherUserId);
+                    if (otherUser) {
+                      t.participant = otherUser;
+                    }
+                  }
+                }
+
+                map.set(t.id, t);
               }
-              map.set(t.id, t);
             }
           });
           return Array.from(map.values());
@@ -786,10 +806,11 @@ function AppContent() {
 
   // Open Direct Chat with user
   const handleOpenDirectChat = (user: User) => {
-    const existing = chatThreads.find((t) => t.participant?.id === user.id);
+    const deterministicId = [currentUser.id, user.id].sort().join('_');
+    const existing = chatThreads.find((t) => t.id === deterministicId || t.participant?.id === user.id);
     if (!existing) {
       const newThread: ChatThread = {
-        id: `chat_${user.id}`,
+        id: deterministicId,
         participant: user,
         lastMessage: {
           text: 'Say hello!',
@@ -931,7 +952,7 @@ function AppContent() {
       imageUrl,
       voiceNote,
       timestamp: 'Just now',
-      isRead: true,
+      isRead: false,
       privacyMode,
       createdAt: Date.now(),
       disappearingSeconds: privacyMode === 'immediate' ? 5 : (privacyMode === 'after_seen' ? 6 : undefined),
@@ -941,11 +962,11 @@ function AppContent() {
 
     setChatThreads((prevThreads) => {
       const existing = prevThreads.find(
-        (t) => t.participant?.id === receiverId || t.id === receiverId
+        (t) => t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId))
       );
       if (existing) {
         return prevThreads.map((thread) => {
-          if (thread.participant?.id === receiverId || thread.id === receiverId) {
+          if (thread.id === receiverId || thread.participant?.id === receiverId || (!thread.isGroup && thread.id.includes(receiverId))) {
             const updatedThread = {
               ...thread,
               lastMessage: {
@@ -956,7 +977,7 @@ function AppContent() {
                 isVoice: !!voiceNote,
                 voiceDuration: voiceNote?.durationSeconds,
                 timestamp: 'Just now',
-                isRead: true,
+                isRead: false,
                 isOwn: true,
               },
               messages: [...thread.messages, newMsg],
@@ -992,8 +1013,9 @@ function AppContent() {
           isFollowing: false,
         };
 
+      const deterministicId = [currentUser.id, receiverId].sort().join('_');
       const newThread: ChatThread = {
-        id: `chat_${receiverId}`,
+        id: deterministicId,
         participant: targetUser,
         lastMessage: {
           text: voiceNote
@@ -1003,7 +1025,7 @@ function AppContent() {
           isVoice: !!voiceNote,
           voiceDuration: voiceNote?.durationSeconds,
           timestamp: 'Just now',
-          isRead: true,
+          isRead: false,
           isOwn: true,
         },
         unreadCount: 0,
@@ -1022,7 +1044,7 @@ function AppContent() {
           if (downloadUrl && downloadUrl !== imageUrl) {
             setChatThreads((prevThreads) =>
               prevThreads.map((t) => {
-                if (t.participant?.id === receiverId || t.id === receiverId) {
+                if (t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId))) {
                   const updatedThread = {
                     ...t,
                     messages: t.messages.map((m) =>
@@ -1045,7 +1067,7 @@ function AppContent() {
           if (downloadUrl && downloadUrl !== voiceNote.audioUrl) {
             setChatThreads((prevThreads) =>
               prevThreads.map((t) => {
-                if (t.participant?.id === receiverId || t.id === receiverId) {
+                if (t.id === receiverId || t.participant?.id === receiverId || (!t.isGroup && t.id.includes(receiverId))) {
                   const updatedThread = {
                     ...t,
                     messages: t.messages.map((m) =>
@@ -1073,7 +1095,7 @@ function AppContent() {
   const handleDeleteMessage = (threadId: string, messageId: string) => {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant?.id === threadId) {
+        if (thread.id === threadId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
           const updated = updateThreadAfterMessageDeletion(thread, messageId);
           syncChatThreadToFirestore(updated).catch(console.warn);
           return updated;
@@ -1087,14 +1109,16 @@ function AppContent() {
   const handleMarkMessageSeen = (threadId: string, messageId: string) => {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant?.id === threadId) {
+        if (thread.id === threadId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
+          let updatedMessage: Message | null = null;
           const updatedMessages = thread.messages.map((m) => {
             if (m.id === messageId && !m.isRead) {
-              return {
+              updatedMessage = {
                 ...m,
                 isRead: true,
                 seenAt: Date.now(),
               };
+              return updatedMessage;
             }
             return m;
           });
@@ -1104,6 +1128,9 @@ function AppContent() {
             messages: updatedMessages,
           };
           syncChatThreadToFirestore(updatedThread).catch(console.warn);
+          if (updatedMessage) {
+            syncChatMessageToFirestore(thread.id, updatedMessage).catch(console.warn);
+          }
           return updatedThread;
         }
         return thread;
@@ -1115,7 +1142,7 @@ function AppContent() {
   const handleToggleMessageReaction = (threadId: string, messageId: string, emoji: string) => {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.id === threadId || thread.participant?.id === threadId) {
+        if (thread.id === threadId || thread.participant?.id === threadId || (!thread.isGroup && thread.id.includes(threadId))) {
           const updatedMessages = thread.messages.map((msg) => {
             if (msg.id === messageId) {
               let currentReactions = msg.reactions ? [...msg.reactions] : [];
@@ -1233,7 +1260,7 @@ function AppContent() {
   const handleClearChatThread = (participantUserId: string) => {
     setChatThreads((prevThreads) =>
       prevThreads.map((thread) => {
-        if (thread.participant?.id === participantUserId || thread.id === participantUserId) {
+        if (thread.id === participantUserId || thread.participant?.id === participantUserId || (!thread.isGroup && thread.id.includes(participantUserId))) {
           const updatedThread = {
             ...thread,
             messages: [],
@@ -1420,24 +1447,26 @@ function AppContent() {
   useEffect(() => {
     let unsub = () => {};
     if (navState.activeChatUserId) {
-      // Find thread ID without causing infinite loops from chatThreads dependency
-      setChatThreads((prevThreads) => {
-        const targetThreadId = prevThreads.find(t => t.id === navState.activeChatUserId || t.participant?.id === navState.activeChatUserId)?.id;
-        if (targetThreadId) {
-          unsub = subscribeToChatMessages(targetThreadId, (messages) => {
-            setChatThreads((current) => current.map((t) => {
+      // Find the specific thread
+      const targetThreadId = chatThreads.find(
+        (t) => t.id === navState.activeChatUserId || t.participant?.id === navState.activeChatUserId || (!t.isGroup && t.id.includes(navState.activeChatUserId))
+      )?.id;
+      
+      if (targetThreadId) {
+        unsub = subscribeToChatMessages(targetThreadId, (messages) => {
+          setChatThreads((current) =>
+            current.map((t) => {
               if (t.id === targetThreadId) {
                 return { ...t, messages };
               }
               return t;
-            }));
-          });
-        }
-        return prevThreads;
-      });
+            })
+          );
+        });
+      }
     }
     return () => unsub();
-  }, [navState.activeChatUserId]);
+  }, [navState.activeChatUserId, chatThreads.length]);
 
   return (
     <>
