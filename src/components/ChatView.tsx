@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ArrowLeft,
   Send,
@@ -823,9 +823,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const activeThread = activeChatUserId
-    ? threads.find((t) => t.participant?.id === activeChatUserId || t.id === activeChatUserId)
+  const dynamicThreads = useMemo(() => {
+    return threads.map(thread => {
+      if (thread.isGroup || !thread.participant) return thread;
+      const liveUser = allUsers?.find(u => u.id === thread.participant!.id);
+      return liveUser ? { ...thread, participant: liveUser } : thread;
+    });
+  }, [threads, allUsers]);
+
+  const rawActiveThread = activeChatUserId
+    ? dynamicThreads.find((t) => t.participant?.id === activeChatUserId || t.id === activeChatUserId)
     : null;
+
+  const activeThread = rawActiveThread;
 
   // Auto scroll to bottom when messages update or typing state changes
   useEffect(() => {
@@ -2108,14 +2118,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   // Filter Active Now users
-  const activeNowThreads = threads.filter((thread) => {
+  const activeNowThreads = dynamicThreads.filter((thread) => {
     const isLocked = isChatLockEnabled && lockedChatUserIds.includes((thread.isGroup ? thread.id : thread.participant?.id || ''));
     if (isLocked && !isVaultUnlocked) return false;
     return true;
   });
 
   // Filtered threads list (matching participant name, username, bio, last message, or any message history text/transcripts)
-  const filteredThreads = threads.filter((thread) => {
+  const filteredThreads = dynamicThreads.filter((thread) => {
     const isLocked = isChatLockEnabled && lockedChatUserIds.includes((thread.isGroup ? thread.id : thread.participant?.id || ''));
 
     if (isLocked && !isVaultUnlocked) {

@@ -34,6 +34,7 @@ import {
   onSnapshot,
   serverTimestamp,
   Unsubscribe,
+  addDoc,
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -1051,8 +1052,9 @@ export const syncChatThreadToFirestore = async (thread: ChatThread): Promise<voi
     await ensureFirebaseAuth();
     if (!thread || !thread.id) return;
     const threadRef = doc(db, 'chat_threads', thread.id);
+    const { messages, ...threadWithoutMessages } = thread;
     await setDoc(threadRef, {
-      ...thread,
+      ...threadWithoutMessages,
       updatedAt: serverTimestamp(),
     }, { merge: true });
   } catch (error) {
@@ -1071,17 +1073,46 @@ export const deleteChatThreadFromFirestore = async (threadId: string): Promise<v
   }
 };
 
-export const syncChatMessageToFirestore = async (threadId: string, message: Message): Promise<void> => {
+export const syncChatMessageToFirestore = async (threadId: string, message: Omit<Message, 'id'> | Message): Promise<void> => {
   try {
     await ensureFirebaseAuth();
-    if (!threadId || !message || !message.id) return;
-    const msgRef = doc(db, 'chat_threads', threadId, 'messages', message.id);
-    await setDoc(msgRef, {
-      ...message,
-      syncedAt: serverTimestamp(),
-    }, { merge: true });
+    if (!threadId || !message) return;
+    const messagesRef = collection(db, 'chat_threads', threadId, 'messages');
+    if ('id' in message && message.id) {
+       const msgRef = doc(db, 'chat_threads', threadId, 'messages', message.id);
+       await setDoc(msgRef, {
+         ...message,
+         syncedAt: serverTimestamp(),
+       }, { merge: true });
+    } else {
+       await addDoc(messagesRef, {
+         ...message,
+         syncedAt: serverTimestamp(),
+       });
+    }
   } catch (error) {
     console.warn('Firestore message sync fallback:', error);
+  }
+};
+
+export const subscribeToChatMessages = (threadId: string, callback: (messages: Message[]) => void): (() => void) => {
+  try {
+    if (!threadId) return () => {};
+    const messagesRef = collection(db, 'chat_threads', threadId, 'messages');
+    const q = query(messagesRef, orderBy('createdAt', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: Message[] = [];
+      snapshot.forEach((docSnap) => {
+        if (docSnap.exists()) {
+          msgs.push({ id: docSnap.id, ...docSnap.data() } as Message);
+        }
+      });
+      callback(msgs);
+    });
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to chat messages:', err);
+    return () => {};
   }
 };
 

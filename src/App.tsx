@@ -57,6 +57,8 @@ import {
   syncChatThreadToFirestore,
   deleteChatThreadFromFirestore,
   subscribeToChatThreads,
+  syncChatMessageToFirestore,
+  subscribeToChatMessages,
   syncNotificationToFirestore,
   subscribeToNotifications,
   subscribeToUsers,
@@ -328,6 +330,10 @@ function AppContent() {
           prevThreads.forEach((t) => map.set(t.id, t));
           remoteThreads.forEach((t) => {
             if (t && t.id) {
+              const existing = map.get(t.id);
+              if (existing && existing.messages && existing.messages.length > 0) {
+                 t.messages = existing.messages;
+              }
               map.set(t.id, t);
             }
           });
@@ -956,6 +962,7 @@ function AppContent() {
               messages: [...thread.messages, newMsg],
             };
             syncChatThreadToFirestore(updatedThread).catch(console.warn);
+            syncChatMessageToFirestore(thread.id, newMsg).catch(console.warn);
             return updatedThread;
           }
           return thread;
@@ -1004,6 +1011,7 @@ function AppContent() {
       };
 
       syncChatThreadToFirestore(newThread).catch(console.warn);
+      syncChatMessageToFirestore(newThread.id, newMsg).catch(console.warn);
       return [newThread, ...prevThreads];
     });
 
@@ -1022,6 +1030,7 @@ function AppContent() {
                     ),
                   };
                   syncChatThreadToFirestore(updatedThread).catch(console.warn);
+                  syncChatMessageToFirestore(t.id, { ...newMsg, imageUrl: downloadUrl }).catch(console.warn);
                   return updatedThread;
                 }
                 return t;
@@ -1046,6 +1055,7 @@ function AppContent() {
                     ),
                   };
                   syncChatThreadToFirestore(updatedThread).catch(console.warn);
+                  syncChatMessageToFirestore(t.id, { ...newMsg, voiceNote: { ...newMsg.voiceNote!, audioUrl: downloadUrl } }).catch(console.warn);
                   return updatedThread;
                 }
                 return t;
@@ -1056,121 +1066,7 @@ function AppContent() {
         .catch(console.warn);
     }
 
-    // Simulate participant typing indicator after 350ms, then deliver reply after typing completes
-    setTimeout(() => {
-      setChatThreads((prevThreads) =>
-        prevThreads.map((thread) => {
-          if (thread.participant?.id === receiverId || thread.id === receiverId) {
-            return {
-              ...thread,
-              isTyping: true,
-            };
-          }
-          return thread;
-        })
-      );
-    }, 350);
-
-    // Natural processing & typing duration (2.1 seconds)
-    setTimeout(() => {
-      const isVoiceResponse = !!voiceNote && Math.random() > 0.4;
-
-      let replyMsg: Message;
-      let lastMsgPreview: {
-        text: string;
-        isVoice?: boolean;
-        voiceDuration?: number;
-      };
-
-      if (isVoiceResponse) {
-        const simulatedSecs = Math.floor(Math.random() * 8) + 6;
-        replyMsg = {
-          id: `m_reply_${Date.now()}`,
-          senderId: receiverId,
-          receiverId: currentUser.id,
-          voiceNote: {
-            durationSeconds: simulatedSecs,
-            waveform: [20, 50, 75, 40, 85, 90, 60, 45, 70, 95, 65, 35, 20],
-          },
-          timestamp: 'Just now',
-          isRead: false,
-          privacyMode: 'normal',
-        };
-        lastMsgPreview = {
-          text: `Voice note (0:${simulatedSecs < 10 ? '0' : ''}${simulatedSecs})`,
-          isVoice: true,
-          voiceDuration: simulatedSecs,
-        };
-      } else {
-        const friendReplies = voiceNote
-          ? [
-              'Got your voice note! Love the creative direction on this.',
-              'Hearing your voice made my day! The acoustic quality is so crisp.',
-              'Sounds like a solid plan! Let me prep the sketches.',
-            ]
-          : [
-              'Awesome composition! Really love the soft 3D tones.',
-              'Looks fantastic! Funshann is so smooth.',
-              'Thanks for sharing! Let me check the details.',
-              'Super clean aesthetic! 💙',
-            ];
-        const randomReply = friendReplies[Math.floor(Math.random() * friendReplies.length)];
-
-        replyMsg = {
-          id: `m_reply_${Date.now()}`,
-          senderId: receiverId,
-          receiverId: currentUser.id,
-          text: randomReply,
-          timestamp: 'Just now',
-          isRead: false,
-          privacyMode: 'normal',
-        };
-        lastMsgPreview = {
-          text: randomReply,
-          isVoice: false,
-        };
-      }
-
-      setChatThreads((prevThreads) => {
-        const chatSettings = getIndividualChatSettings(receiverId);
-        const isMuted = chatSettings.isMuted;
-        const targetThread = prevThreads.find((t) => t.participant?.id === receiverId || t.id === receiverId);
-
-        if (!isMuted && targetThread) {
-          const notifItem: NotificationItem = {
-            id: `notif_msg_${Date.now()}`,
-            type: 'message',
-            user: targetThread.isGroup ? { id: targetThread.id, name: targetThread.groupName || 'Group', avatar: targetThread.groupAvatar || '', username: 'group', postsCount: 0, followersCount: 0, followingCount: 0, isOnline: true, isFollowing: false } : targetThread.participant!,
-            text: `sent a message: "${lastMsgPreview.text}"`,
-            timestamp: 'Just now',
-            read: false,
-            chatUserId: receiverId,
-          };
-          setNotifications((prev) => [notifItem, ...prev]);
-          syncNotificationToFirestore(notifItem).catch(console.warn);
-        }
-
-        return prevThreads.map((thread) => {
-          if (thread.participant?.id === receiverId || thread.id === receiverId) {
-            return {
-              ...thread,
-              isTyping: false,
-              unreadCount: isMuted ? thread.unreadCount : thread.unreadCount + 1,
-              lastMessage: {
-                text: lastMsgPreview.text,
-                isVoice: lastMsgPreview.isVoice,
-                voiceDuration: lastMsgPreview.voiceDuration,
-                timestamp: 'Just now',
-                isRead: false,
-                isOwn: false,
-              },
-              messages: [...thread.messages, replyMsg],
-            };
-          }
-          return thread;
-        });
-      });
-    }, 2200);
+    // Natural processing removed
   };
 
   // Delete message for everyone in a thread
@@ -1465,9 +1361,7 @@ function AppContent() {
     ? posts.filter((p) => (p.userId && p.userId === currentUserId) || (p.user && p.user.id === currentUserId))
     : posts.filter((p) => (p.userId && p.userId === displayedUserId) || (p.user && p.user.id === displayedUserId));
 
-  const userPosts = profileUserPosts.length > 0
-    ? profileUserPosts
-    : (displayedUserId === currentUserId ? posts.slice(0, 3) : []);
+  const userPosts = profileUserPosts;
   const savedPosts = posts.filter((p) => p.isSaved);
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
@@ -1522,6 +1416,28 @@ function AppContent() {
     navState.isSettingsOpen,
     navState.profileHistory.length,
   ]);
+
+  useEffect(() => {
+    let unsub = () => {};
+    if (navState.activeChatUserId) {
+      // Find thread ID without causing infinite loops from chatThreads dependency
+      setChatThreads((prevThreads) => {
+        const targetThreadId = prevThreads.find(t => t.id === navState.activeChatUserId || t.participant?.id === navState.activeChatUserId)?.id;
+        if (targetThreadId) {
+          unsub = subscribeToChatMessages(targetThreadId, (messages) => {
+            setChatThreads((current) => current.map((t) => {
+              if (t.id === targetThreadId) {
+                return { ...t, messages };
+              }
+              return t;
+            }));
+          });
+        }
+        return prevThreads;
+      });
+    }
+    return () => unsub();
+  }, [navState.activeChatUserId]);
 
   return (
     <>
@@ -1645,7 +1561,7 @@ function AppContent() {
               currentUser={currentUser}
               profileUser={currentProfileUser ? displayedProfileUser : null}
               userPosts={userPosts}
-              savedPosts={savedPosts.length > 0 ? savedPosts : posts.slice(1, 4)}
+              savedPosts={savedPosts}
               onOpenSettings={() => openSettings('main')}
               onOpenThemeStudio={handleOpenThemeStudio}
               onUpdateUser={(updated) => {
