@@ -132,6 +132,11 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
     followingCount: 0,
   };
   const isOwnProfile = Boolean(displayedUser?.id && activeUser?.id && displayedUser.id === activeUser.id);
+  const isFollowing = !isOwnProfile && currentUser
+    ? ((currentUser.followingCount ?? 0) === 0 && (!currentUser.following || currentUser.following.length === 0))
+      ? false
+      : (currentUser.following || []).includes(displayedUser.id)
+    : Boolean(displayedUser.isFollowing);
   const isUserLocked = lockedChatUserIds.includes(displayedUser.id);
   const userAvatar =
     displayedUser.avatar ||
@@ -253,12 +258,12 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
                   whileTap={{ scale: 0.94 }}
                   onClick={() => onToggleFollow && onToggleFollow(displayedUser.id)}
                   className={`h-11 px-5 rounded-full text-[13.5px] font-bold transition-all flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial shadow-sm ${
-                    displayedUser.isFollowing
+                    isFollowing
                       ? 'neu-inset text-slate-600 border border-slate-200/80'
                       : 'neu-active-blue text-white shadow-md'
                   }`}
                 >
-                  {displayedUser.isFollowing ? (
+                  {isFollowing ? (
                     <>
                       <UserCheck className="w-4.5 h-4.5" />
                       <span>Following</span>
@@ -530,7 +535,7 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
           isOpen={isIndividualMenuOpen}
           onClose={() => setIsIndividualMenuOpen(false)}
           user={displayedUser}
-          isFollowing={displayedUser.isFollowing}
+          isFollowing={isFollowing}
           onToggleFollow={onToggleFollow}
           onClearChat={onClearChat}
           isLocked={isUserLocked}

@@ -4,6 +4,7 @@ import { User } from '../../types';
 
 interface SearchTabProps {
   users: User[];
+  currentUser?: User;
   onToggleFollow: (userId: string) => void;
   onOpenDirectChat: (user: User) => void;
   onUserSelect: (user: User) => void;
@@ -12,6 +13,7 @@ interface SearchTabProps {
 
 export const SearchTab: React.FC<SearchTabProps> = ({
   users,
+  currentUser,
   onToggleFollow,
   onOpenDirectChat,
   onUserSelect,
@@ -20,6 +22,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
   return (
     <SearchPeopleView
       users={users}
+      currentUser={currentUser}
       onToggleFollow={onToggleFollow}
       onOpenDirectChat={onOpenDirectChat}
       onUserSelect={onUserSelect}

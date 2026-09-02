@@ -6,6 +6,7 @@ import { useTranslation } from '../context/LanguageContext';
 
 interface SearchPeopleViewProps {
   users: User[];
+  currentUser?: User;
   onToggleFollow: (userId: string) => void;
   onOpenDirectChat: (user: User) => void;
   onUserSelect?: (user: User) => void;
@@ -14,6 +15,7 @@ interface SearchPeopleViewProps {
 
 const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
   users,
+  currentUser,
   onToggleFollow,
   onOpenDirectChat,
   onUserSelect,
@@ -31,7 +33,31 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
     { id: 'following', label: t('search_filter_following') },
   ];
 
-  const filteredUsers = users.filter((user) => {
+  // Dynamically check if currentUser.following array includes user.id
+  const checkIsFollowing = (u: User): boolean => {
+    if (!currentUser || !currentUser.id) return Boolean(u.isFollowing);
+    const followingList = currentUser.following || [];
+    // If following count is 0 or following list is empty, then NOT following
+    if ((currentUser.followingCount ?? 0) === 0 && followingList.length === 0) {
+      return false;
+    }
+    return followingList.includes(u.id);
+  };
+
+  // Filter out duplicate users using unique user IDs (u.id) and exclude current logged in user
+  const uniqueUsersMap = new Map<string, User>();
+  users.forEach((u) => {
+    if (u && u.id && u.id !== currentUser?.id) {
+      const isFollowingDynamic = checkIsFollowing(u);
+      uniqueUsersMap.set(u.id, {
+        ...u,
+        isFollowing: isFollowingDynamic,
+      });
+    }
+  });
+  const uniqueUsers = Array.from(uniqueUsersMap.values());
+
+  const filteredUsers = uniqueUsers.filter((user) => {
     const matchesQuery =
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||

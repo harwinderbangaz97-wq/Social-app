@@ -7,6 +7,8 @@ import {
   ConfirmationResult,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   FacebookAuthProvider,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -66,6 +68,8 @@ export {
   signInWithEmailAndPassword, 
   sendEmailVerification,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   FacebookAuthProvider,
   signOut
@@ -431,9 +435,17 @@ export const signInWithGooglePopup = async (): Promise<{ success: boolean; user?
     };
   } catch (error: any) {
     console.warn('Firebase Google Sign-In note:', error);
+    let errMsg = error?.message || 'Google Sign-In failed or was cancelled.';
+    if (error?.code === 'auth/network-request-failed' || error?.message?.includes('network-request-failed')) {
+      errMsg = 'Google Sign-In popup request failed due to iframe restrictions. Please sign in using Email or Phone Number below, or open the app in a new tab.';
+    } else if (error?.code === 'auth/popup-closed-by-user') {
+      errMsg = 'Google Sign-In popup was closed before completing.';
+    } else if (error?.code === 'auth/popup-blocked') {
+      errMsg = 'Google Sign-In popup was blocked by browser settings. Please allow popups or open the app in a new tab.';
+    }
     return {
       success: false,
-      error: error?.message || 'Google Sign-In failed or was cancelled.',
+      error: errMsg,
     };
   }
 };
@@ -597,6 +609,7 @@ export const normalizeUser = (u: any): User => {
       postsCount: 0,
       followersCount: 0,
       followingCount: 0,
+      following: [],
     };
   }
   return {
@@ -615,6 +628,7 @@ export const normalizeUser = (u: any): User => {
     postsCount: typeof u.postsCount === 'number' ? u.postsCount : 0,
     followersCount: typeof u.followersCount === 'number' ? u.followersCount : 0,
     followingCount: typeof u.followingCount === 'number' ? u.followingCount : 0,
+    following: Array.isArray(u.following) ? u.following : [],
     isVerified: Boolean(u.isVerified),
     isFollowing: Boolean(u.isFollowing),
     isOnline: Boolean(u.isOnline),
@@ -830,6 +844,28 @@ export const syncUserProfileToFirestore = async (user: Partial<User>): Promise<v
   }
 };
 
+export const getUserFollowingsFromFirestore = async (userId: string): Promise<string[]> => {
+  try {
+    if (!userId) return [];
+    const followsRef = collection(db, 'follows');
+    const q = query(followsRef, where('followerUid', '==', userId));
+    const snap = await getDocs(q);
+    const followingIds: string[] = [];
+    snap.forEach((docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.followingUid) {
+          followingIds.push(data.followingUid);
+        }
+      }
+    });
+    return followingIds;
+  } catch (error) {
+    console.warn('Failed to fetch user followings:', error);
+    return [];
+  }
+};
+
 export const getUserProfileFromFirestore = async (userId: string): Promise<User | null> => {
   try {
     await ensureFirebaseAuth();
@@ -837,7 +873,13 @@ export const getUserProfileFromFirestore = async (userId: string): Promise<User 
     const userRef = doc(db, 'users', userId);
     const snap = await getDoc(userRef);
     if (snap.exists()) {
-      return normalizeUser(snap.data());
+      const u = normalizeUser(snap.data());
+      const followings = await getUserFollowingsFromFirestore(userId);
+      return {
+        ...u,
+        following: followings,
+        followingCount: followings.length > 0 ? followings.length : u.followingCount,
+      };
     }
     return null;
   } catch (error) {

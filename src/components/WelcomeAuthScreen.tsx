@@ -18,6 +18,7 @@ import {
   Loader2,
   RefreshCw,
   Edit3,
+  ExternalLink,
 } from 'lucide-react';
 import { User, ThemeMode } from '../types';
 import { LegalDocumentsSubPage } from './settings/LegalDocumentsSubPage';
@@ -33,6 +34,8 @@ import {
   checkIfPhoneRegistered,
   clearRecaptchaVerifier,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   FacebookAuthProvider,
   createUserWithEmailAndPassword,
@@ -125,8 +128,30 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
     else setOtpCode('123456');
   };
 
-  // Clean up any active reCAPTCHA verifiers when unmounting
+  // Clean up any active reCAPTCHA verifiers and check redirect auth results on mount
   useEffect(() => {
+    // Check if user is returning from Google/Facebook redirect authentication flow
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result?.user) {
+          const u = result.user;
+          const existing = await getUserProfileFromFirestore(u.uid);
+          const userObj: Partial<User> = {
+            id: u.uid,
+            name: u.displayName || existing?.name || 'Funshann Member',
+            username: existing?.username || (u.displayName || u.email?.split('@')[0] || 'google_user').toLowerCase().replace(/[^a-z0-9_]/g, ''),
+            email: u.email || undefined,
+            avatar: u.photoURL || existing?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+            bio: existing?.bio || `Creating vibes on Funshann ✨ | Connected with Google`,
+          };
+          await syncUserProfileToFirestore(userObj);
+          onAuthenticate(userObj as User);
+        }
+      })
+      .catch((err) => {
+        console.warn('Google redirect result check:', err);
+      });
+
     return () => {
       clearRecaptchaVerifier('send-otp-btn');
     };
@@ -138,27 +163,59 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      const res = await signInWithPopup(auth, provider);
-      
-      if (res.user) {
-        const u = res.user;
-        const existing = await getUserProfileFromFirestore(u.uid);
-        
-        // If it's a new user, create a profile.
-        // If existing, we use the profile.
-        const userObj: Partial<User> = {
-          id: u.uid,
-          name: u.displayName || existing?.name || 'Funshann Member',
-          username: existing?.username || (u.displayName || u.email?.split('@')[0] || 'google_user').toLowerCase().replace(/[^a-z0-9_]/g, ''),
-          email: u.email || undefined,
-          avatar: u.photoURL || existing?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
-          bio: existing?.bio || `Creating vibes on Funshann ✨ | Connected with Google`,
-        };
-        await syncUserProfileToFirestore(userObj);
+
+      // If app is embedded in an iframe preview, popup storage access might be restricted by browser security policies
+      const isInIframe = window.self !== window.top;
+
+      try {
+        const res = await signInWithPopup(auth, provider);
+        if (res.user) {
+          const u = res.user;
+          const existing = await getUserProfileFromFirestore(u.uid);
+          const userObj: Partial<User> = {
+            id: u.uid,
+            name: u.displayName || existing?.name || 'Funshann Member',
+            username: existing?.username || (u.displayName || u.email?.split('@')[0] || 'google_user').toLowerCase().replace(/[^a-z0-9_]/g, ''),
+            email: u.email || undefined,
+            avatar: u.photoURL || existing?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+            bio: existing?.bio || `Creating vibes on Funshann ✨ | Connected with Google`,
+          };
+          await syncUserProfileToFirestore(userObj);
+          onAuthenticate(userObj as User);
+        }
+      } catch (popupErr: any) {
+        if (
+          popupErr?.code === 'auth/network-request-failed' ||
+          popupErr?.message?.includes('network-request-failed')
+        ) {
+          if (isInIframe) {
+            setErrorMessage(
+              'Google Sign-In popup request was restricted inside preview iframe sandbox. Click below to open in a new tab or use Email / Phone Login.'
+            );
+          } else {
+            // If full page, try redirect flow
+            await signInWithRedirect(auth, provider);
+          }
+        } else {
+          throw popupErr;
+        }
       }
     } catch (error: any) {
-      console.error('Google Sign-In error:', error);
-      setErrorMessage(error?.message || 'Google Sign-In failed.');
+      console.error('Google Sign-In note:', error);
+      if (
+        error?.code === 'auth/network-request-failed' ||
+        error?.message?.includes('network-request-failed')
+      ) {
+        setErrorMessage(
+          'Google Sign-In popup request was restricted inside preview iframe sandbox. Click below to open in a new tab or use Email / Phone Login.'
+        );
+      } else if (error?.code === 'auth/popup-closed-by-user') {
+        setErrorMessage('Google Sign-In popup was closed before completing. Please try again.');
+      } else if (error?.code === 'auth/popup-blocked') {
+        setErrorMessage('Google Sign-In popup was blocked by browser settings. Please allow popups or open the app in a new tab.');
+      } else {
+        setErrorMessage(error?.message || 'Google Sign-In failed.');
+      }
     }
   };
 
@@ -182,10 +239,20 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
           bio: existing?.bio || 'Sharing moments & building real connections on Funshann 💙',
         };
         await syncUserProfileToFirestore(userObj);
+        onAuthenticate(userObj as User);
       }
     } catch (error: any) {
-      console.error('Facebook Sign-In error:', error);
-      setErrorMessage(error?.message || 'Facebook Sign-In failed or is not configured.');
+      console.error('Facebook Sign-In note:', error);
+      if (
+        error?.code === 'auth/network-request-failed' ||
+        error?.message?.includes('network-request-failed')
+      ) {
+        setErrorMessage(
+          'Facebook Sign-In popup failed due to iframe restrictions. Please sign in using Email or Phone Number below, or open the app in a new tab.'
+        );
+      } else {
+        setErrorMessage(error?.message || 'Facebook Sign-In failed or is not configured.');
+      }
     }
   };
 
@@ -697,8 +764,18 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
               </div>
 
               {errorMessage && (
-                <div className="p-2.5 mb-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-medium">
-                  {errorMessage}
+                <div className="p-2.5 mb-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-medium flex flex-col gap-2">
+                  <span>{errorMessage}</span>
+                  {(errorMessage.includes('new tab') || errorMessage.includes('iframe')) && (
+                    <button
+                      type="button"
+                      onClick={() => window.open(window.location.href, '_blank')}
+                      className="px-3 py-1.5 rounded-lg bg-[#2563EB] text-white text-xs font-bold shadow-2xs hover:bg-blue-700 transition flex items-center justify-center gap-1.5 w-fit"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open App in New Tab</span>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -975,8 +1052,18 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
               </div>
 
               {errorMessage && (
-                <div className="p-2.5 mb-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-medium">
-                  {errorMessage}
+                <div className="p-2.5 mb-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-medium flex flex-col gap-2">
+                  <span>{errorMessage}</span>
+                  {(errorMessage.includes('new tab') || errorMessage.includes('iframe')) && (
+                    <button
+                      type="button"
+                      onClick={() => window.open(window.location.href, '_blank')}
+                      className="px-3 py-1.5 rounded-lg bg-[#2563EB] text-white text-xs font-bold shadow-2xs hover:bg-blue-700 transition flex items-center justify-center gap-1.5 w-fit"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open App in New Tab</span>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1140,6 +1227,16 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                   {errorMessage && (
                     <div className="p-2.5 mb-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-medium flex flex-col gap-1.5">
                       <span>{errorMessage}</span>
+                      {(errorMessage.includes('new tab') || errorMessage.includes('iframe')) && (
+                        <button
+                          type="button"
+                          onClick={() => window.open(window.location.href, '_blank')}
+                          className="px-3 py-1.5 rounded-lg bg-[#2563EB] text-white text-xs font-bold shadow-2xs hover:bg-blue-700 transition flex items-center justify-center gap-1.5 w-fit my-1"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Open App in New Tab</span>
+                        </button>
+                      )}
                       {errorMessage.toLowerCase().includes('not registered') && (
                         <button
                           type="button"

@@ -38,6 +38,7 @@ export interface User {
   postsCount: number;
   followersCount: number;
   followingCount: number;
+  following?: string[];
   isVerified?: boolean;
   isFollowing?: boolean;
   isOnline?: boolean;
