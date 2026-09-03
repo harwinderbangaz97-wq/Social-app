@@ -67,7 +67,7 @@ import {
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db, auth, getUserProfileFromFirestore } from '../services/firebase';
+import { db, auth, getUserProfileFromFirestore, uploadChatMediaToStorage, isValidMediaUrl } from '../services/firebase';
 import {
   getChatRoomId,
   subscribeToChatMessages,
@@ -1137,6 +1137,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
       ? activeThread.id
       : recipientId;
 
+    let finalImageUrl = imageToSend;
+    if (imageToSend && imageToSend.startsWith('data:')) {
+      try {
+        const uploadedUrl = await uploadChatMediaToStorage(senderUid, chatId, imageToSend, 'image');
+        if (uploadedUrl && isValidMediaUrl(uploadedUrl)) {
+          finalImageUrl = uploadedUrl;
+        }
+      } catch (uploadErr) {
+        console.warn('Failed to upload chat image to Firebase Storage, using data URL fallback:', uploadErr);
+      }
+    }
+
     const messageObj: any = {
       text: textToSend || '',
       senderId: senderUid,
@@ -1145,8 +1157,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
       reactions: [],
       isRead: false,
     };
-    if (imageToSend) {
-      messageObj.imageUrl = imageToSend;
+    if (finalImageUrl) {
+      messageObj.imageUrl = finalImageUrl;
     }
 
     // Sending Messages: When sendMessage is called, perform ONLY an addDoc(collection(db, 'chats', chatId, 'messages'), messageObj). Do NOT update local state manually.
@@ -1154,7 +1166,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       await addDoc(collection(db, 'chats', chatId, 'messages'), messageObj);
 
       // Keep parent thread document updated in Firestore
-      const summaryText = textToSend || (imageToSend ? 'Photo attachment' : '');
+      const summaryText = textToSend || (finalImageUrl ? 'Photo attachment' : '');
       const participantIds = activeThread.isGroup
         ? (activeThread.participantIds || [senderUid])
         : [senderUid, targetRecipientId].sort();
@@ -1167,7 +1179,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           participants: participantIds,
           lastMessage: {
             text: summaryText,
-            imageUrl: imageToSend || null,
+            imageUrl: finalImageUrl || null,
             timestamp: 'Just now',
             isRead: false,
             senderId: senderUid,
