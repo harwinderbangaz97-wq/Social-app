@@ -89,7 +89,17 @@ const UploadTab = lazy(() => import('./components/tabs/UploadTab').then(m => ({ 
 const ChatTab = lazy(() => import('./components/tabs/ChatTab').then(m => ({ default: m.ChatTab })));
 const ProfileTab = lazy(() => import('./components/tabs/ProfileTab').then(m => ({ default: m.ProfileTab })));
 
-const EMPTY_USER: User = {
+const [currentUser, setCurrentUser] = useState<User>(() => {
+  const savedUser = localStorage.getItem('funshann_current_user');
+  if (savedUser) {
+    try {
+      return JSON.parse(savedUser);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  return EMPTY_USER;
+});
   id: '',
   name: '',
   username: '',
