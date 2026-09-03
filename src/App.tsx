@@ -373,7 +373,7 @@ function AppContent() {
         setPosts((prevPosts) => {
           const map = new Map<string, Post>();
           remotePosts.forEach((p) => {
-            if (p && p.id && isValidMediaUrl(p.imageUrl)) {
+            if (p && p.id) {
               map.set(p.id, p);
             }
           });
@@ -411,7 +411,7 @@ function AppContent() {
             prevPosts.forEach((p) => map.set(p.id, p));
             // Overlay remote posts from Firestore
             remotePosts.forEach((p) => {
-              if (p && p.id && isValidMediaUrl(p.imageUrl)) {
+              if (p && p.id) {
                 map.set(p.id, p);
               }
             });
@@ -432,7 +432,7 @@ function AppContent() {
           const map = new Map<string, Story>();
           prevStories.forEach((s) => map.set(s.id, s));
           remoteStories.forEach((s) => {
-            if (s && s.id && isValidMediaUrl(s.mediaUrl)) {
+            if (s && s.id) {
               map.set(s.id, s);
             }
           });

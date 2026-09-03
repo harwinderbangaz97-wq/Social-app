@@ -33,6 +33,7 @@ import {
   where,
   limit,
   orderBy,
+  startAfter,
   onSnapshot,
   serverTimestamp,
   Unsubscribe,
@@ -916,11 +917,12 @@ export const getUserProfileFromFirestore = async (userId: string): Promise<User 
   }
 };
 
-export const subscribeToUsers = (callback: (users: User[]) => void): (() => void) => {
+export const subscribeToUsers = (callback: (users: User[]) => void, limitCount = 30): (() => void) => {
   try {
     const usersRef = collection(db, 'users');
+    const q = query(usersRef, limit(limitCount));
     const unsubscribe = onSnapshot(
-      usersRef,
+      q,
       (snapshot) => {
         const map = new Map<string, User>();
         snapshot.forEach((docSnap) => {
@@ -944,11 +946,12 @@ export const subscribeToUsers = (callback: (users: User[]) => void): (() => void
   }
 };
 
-export const getUsersFromFirestore = async (): Promise<User[]> => {
+export const getUsersFromFirestore = async (limitCount = 30): Promise<User[]> => {
   try {
     await ensureFirebaseAuth();
     const usersRef = collection(db, 'users');
-    const querySnapshot = await getDocs(usersRef);
+    const q = query(usersRef, limit(limitCount));
+    const querySnapshot = await getDocs(q);
     const map = new Map<string, User>();
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
@@ -1039,17 +1042,17 @@ export const updatePostInFirestore = async (postId: string, updates: Partial<Pos
   }
 };
 
-export const getPostsFromFirestore = async (): Promise<Post[]> => {
+export const getPostsFromFirestore = async (limitCount = 25): Promise<Post[]> => {
   try {
     await ensureFirebaseAuth();
     const postsRef = collection(db, 'posts');
-    const q = query(postsRef, limit(100));
+    const q = query(postsRef, limit(limitCount));
     const querySnapshot = await getDocs(q);
     const result: Post[] = [];
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
         const p = normalizePost({ ...docSnap.data(), id: docSnap.id });
-        if (isValidMediaUrl(p.imageUrl)) {
+        if (p && p.id) {
           result.push(p);
         }
       }
@@ -1062,18 +1065,19 @@ export const getPostsFromFirestore = async (): Promise<Post[]> => {
   }
 };
 
-export const subscribeToPosts = (callback: (posts: Post[]) => void): (() => void) => {
+export const subscribeToPosts = (callback: (posts: Post[]) => void, limitCount = 25): (() => void) => {
   try {
     const postsRef = collection(db, 'posts');
+    const q = query(postsRef, limit(limitCount));
     const localCache = new Map<string, Post>();
     const unsubscribe = onSnapshot(
-      postsRef,
+      q,
       (snapshot) => {
         snapshot.forEach((docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
             const p = normalizePost({ ...data, id: docSnap.id });
-            if (isValidMediaUrl(p.imageUrl)) {
+            if (p && p.id) {
               localCache.set(p.id, p);
             }
           }
