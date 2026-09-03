@@ -82,6 +82,7 @@ export {
   FacebookAuthProvider,
   signOut,
   doc,
+  collection,
   setDoc,
   serverTimestamp
 };
@@ -1049,19 +1050,20 @@ export const getPostsFromFirestore = async (): Promise<Post[]> => {
 export const subscribeToPosts = (callback: (posts: Post[]) => void): (() => void) => {
   try {
     const postsRef = collection(db, 'posts');
+    const localCache = new Map<string, Post>();
     const unsubscribe = onSnapshot(
       postsRef,
       (snapshot) => {
-        const result: Post[] = [];
         snapshot.forEach((docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
             const p = normalizePost({ ...data, id: docSnap.id });
             if (isValidMediaUrl(p.imageUrl)) {
-              result.push(p);
+              localCache.set(p.id, p);
             }
           }
         });
+        const result = Array.from(localCache.values());
         // Sort descending so newly added posts (highest timestamp) stay at the top
         result.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
         callback(result);

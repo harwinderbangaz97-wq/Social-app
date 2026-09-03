@@ -75,6 +75,7 @@ import {
   DEFAULT_AVATAR,
   db,
   doc,
+  collection,
   setDoc,
   serverTimestamp,
   getPostsFromFirestore,
@@ -828,9 +829,10 @@ function AppContent() {
     >
   ) => {
     const now = Date.now();
+    const postId = doc(collection(db, 'posts')).id;
     const createdPost: Post = {
       ...newPostData,
-      id: `post_${now}`,
+      id: postId,
       timestamp: new Date().toISOString(),
       createdAtMs: now,
       likesCount: 0,
@@ -845,11 +847,11 @@ function AppContent() {
       comments: [],
     };
 
-    // 1. Immediately prepend without overwriting or resetting the array
-    setPosts((prevPosts) => [createdPost, ...prevPosts.filter((p) => p.id !== createdPost.id)]);
-
-    // 2. Persist to Firestore collection 'posts'
+    // 1. Persist to Firestore collection 'posts' first and await before adding to local state / resetting
     await syncPostToFirestore(createdPost).catch(console.warn);
+
+    // 2. Add to local state
+    setPosts((prevPosts) => [createdPost, ...prevPosts.filter((p) => p.id !== createdPost.id)]);
 
     // 3. If post image is local data URL, upload to Firebase Storage, validate download URL, and update Firestore
     if (createdPost.imageUrl && createdPost.imageUrl.startsWith('data:')) {

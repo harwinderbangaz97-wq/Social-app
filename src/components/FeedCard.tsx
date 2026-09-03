@@ -264,6 +264,50 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
     }
   }
 
+  const [ogData, setOgData] = useState<{
+    title?: string;
+    description?: string;
+    image?: string;
+    publisher?: string;
+  } | null>(null);
+  const [isLoadingOg, setIsLoadingOg] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!sharedUrl) {
+      setOgData(null);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingOg(true);
+
+    fetch(`https://api.microlink.io?url=${encodeURIComponent(sharedUrl)}`)
+      .then(res => res.json())
+      .then(result => {
+        if (!isMounted) return;
+        if (result && result.status === 'success' && result.data) {
+          setOgData({
+            title: result.data.title,
+            description: result.data.description,
+            image: result.data.image?.url,
+            publisher: result.data.publisher || domainName,
+          });
+        }
+      })
+      .catch(err => {
+        console.warn('Failed to fetch Open Graph metadata:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingOg(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [sharedUrl]);
+
   return (
     <motion.article
       initial={{ opacity: 0, y: 12 }}
@@ -747,38 +791,40 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 )}
               </div>
 
-              {/* High-Performance Thumbnail Preview for Shared Links and Images */}
+              {/* High-Performance Thumbnail Preview for Shared Links and Images with Open Graph Metadata */}
               {sharedUrl && (
                 <motion.div
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="mt-2.5 p-2 rounded-2xl bg-slate-50/95 hover:bg-slate-100 border border-slate-200/80 flex items-center gap-3 cursor-pointer transition group/preview shadow-2xs"
+                  className="mt-2.5 p-2.5 rounded-2xl bg-slate-50/95 hover:bg-slate-100/90 border border-slate-200/80 flex items-center gap-3.5 cursor-pointer transition group/preview shadow-2xs"
                   onClick={(e) => {
                     e.stopPropagation();
                     window.open(sharedUrl, '_blank', 'noopener,noreferrer');
                   }}
                 >
-                  <div className="w-13 h-13 rounded-xl bg-slate-200 overflow-hidden flex-shrink-0 relative shadow-xs">
+                  <div className="w-14 h-14 rounded-xl bg-slate-200 overflow-hidden flex-shrink-0 relative shadow-xs">
                     <img
-                      src={post.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80'}
-                      alt="Preview thumbnail"
+                      src={ogData?.image || post.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80'}
+                      alt={ogData?.title || domainName}
                       className="w-full h-full object-cover group-hover/preview:scale-105 transition-transform duration-300"
                       loading="lazy"
                     />
                     <div className="absolute inset-0 bg-black/5 group-hover/preview:bg-transparent transition-colors" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 text-[11px] font-bold text-[#5B9DFF] uppercase tracking-wider mb-0.5">
-                      <Link2 className="w-3 h-3" />
-                      <span>{domainName}</span>
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#5B9DFF] uppercase tracking-wider mb-0.5">
+                      <Link2 className="w-3 h-3 flex-shrink-0" />
+                      <span className="truncate">{ogData?.publisher || domainName}</span>
                     </div>
-                    <h5 className="text-[13.5px] font-bold text-slate-800 truncate group-hover/preview:text-[#5B9DFF] transition-colors capitalize">
-                      {cleanUrlTitle ? cleanUrlTitle.slice(0, 40) : domainName}
+                    <h5 className="text-[13.5px] font-bold text-slate-800 truncate group-hover/preview:text-[#5B9DFF] transition-colors">
+                      {ogData?.title || (cleanUrlTitle ? cleanUrlTitle : domainName)}
                     </h5>
-                    <p className="text-[11.5px] text-slate-400 truncate">{sharedUrl}</p>
+                    <p className="text-[11.5px] text-slate-400 truncate">
+                      {ogData?.description || sharedUrl}
+                    </p>
                   </div>
-                  <div className="w-7.5 h-7.5 rounded-full bg-white shadow-xs border border-slate-200 flex items-center justify-center text-slate-500 group-hover/preview:bg-[#5B9DFF] group-hover/preview:text-white group-hover/preview:border-transparent transition-all flex-shrink-0 mr-1">
+                  <div className="w-8 h-8 rounded-full bg-white shadow-xs border border-slate-200 flex items-center justify-center text-slate-500 group-hover/preview:bg-[#5B9DFF] group-hover/preview:text-white group-hover/preview:border-transparent transition-all flex-shrink-0 mr-1">
                     <Link2 className="w-3.5 h-3.5" />
                   </div>
                 </motion.div>
