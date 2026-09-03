@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Settings,
   Edit3,
@@ -42,6 +42,7 @@ import { User, Post, ThemeMode, SocialLink } from '../types';
 import { EditProfileModal } from './EditProfileModal';
 import { IndividualUserMenu } from './IndividualUserMenu';
 import { useNavigation } from '../context/NavigationContext';
+import { DEFAULT_AVATAR } from '../services/firebase';
 
 interface ProfileViewProps {
   currentUser: User;
@@ -61,6 +62,8 @@ interface ProfileViewProps {
   lockedChatUserIds?: string[];
   onToggleLockChat?: (userId: string) => void;
   onClearChat?: (userId: string) => void;
+  allUsers?: User[];
+  onUserClick?: (user: User) => void;
 }
 
 const getSocialIcon = (platform: SocialLink['platform']) => {
@@ -114,10 +117,14 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
   lockedChatUserIds = [],
   onToggleLockChat,
   onClearChat,
+  allUsers = [],
+  onUserClick,
 }) => {
   const { navState, setIsEditProfileOpen, openPostPreview, closePostPreview } = useNavigation();
   const [activeSubTab, setActiveSubTab] = useState<'posts' | 'saved'>('posts');
   const [isIndividualMenuOpen, setIsIndividualMenuOpen] = useState(false);
+  const [listModalType, setListModalType] = useState<'followers' | 'following' | null>(null);
+  const postGridRef = useRef<HTMLDivElement | null>(null);
   const isEditModalOpen = navState.isEditProfileOpen;
   const selectedPreviewPost = navState.previewPost;
 
@@ -391,8 +398,12 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
         )}
 
         {/* 3D Neumorphic Statistics Counters */}
-        <div className="grid grid-cols-3 gap-2 pt-1.5 border-t border-slate-100 max-w-[370px] mx-auto w-full">
-          <div className="neu-inset rounded-[15px] py-1.5 px-2 text-center">
+        <div ref={postGridRef} className="grid grid-cols-3 gap-2 pt-1.5 border-t border-slate-100 max-w-[370px] mx-auto w-full">
+          <div
+            onClick={() => postGridRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            className="neu-inset rounded-[15px] py-1.5 px-2 text-center cursor-pointer hover:bg-slate-50 transition active:scale-95"
+            title="View posts"
+          >
             <span className="block text-[16.5px] font-extrabold text-slate-800 font-['Outfit'] leading-tight">
               {displayedUser.postsCount}
             </span>
@@ -401,7 +412,11 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
             </span>
           </div>
 
-          <div className="neu-inset rounded-[15px] py-1.5 px-2 text-center">
+          <div
+            onClick={() => setListModalType('followers')}
+            className="neu-inset rounded-[15px] py-1.5 px-2 text-center cursor-pointer hover:bg-slate-50 transition active:scale-95"
+            title="View followers"
+          >
             <span className="block text-[16.5px] font-extrabold text-slate-800 font-['Outfit'] leading-tight">
               {displayedUser.followersCount > 999
                 ? `${(displayedUser.followersCount / 1000).toFixed(1)}k`
@@ -412,7 +427,11 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
             </span>
           </div>
 
-          <div className="neu-inset rounded-[15px] py-1.5 px-2 text-center">
+          <div
+            onClick={() => setListModalType('following')}
+            className="neu-inset rounded-[15px] py-1.5 px-2 text-center cursor-pointer hover:bg-slate-50 transition active:scale-95"
+            title="View following"
+          >
             <span className="block text-[16.5px] font-extrabold text-slate-800 font-['Outfit'] leading-tight">
               {displayedUser.followingCount}
             </span>
@@ -543,6 +562,85 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
           onShowToast={onShowToast}
         />
       )}
+
+      {/* Followers / Following List Modal */}
+      <AnimatePresence>
+        {listModalType && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={() => setListModalType(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-white rounded-[24px] p-6 shadow-2xl max-h-[80vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+                <h3 className="text-lg font-bold text-slate-800 capitalize font-['Outfit']">
+                  {listModalType}
+                </h3>
+                <button
+                  onClick={() => setListModalType(null)}
+                  className="w-8 h-8 rounded-full neu-raised flex items-center justify-center text-slate-500 hover:text-slate-800 font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                {(() => {
+                  const targetUsers = allUsers || [];
+                  const filtered = listModalType === 'following'
+                    ? targetUsers.filter(u => (displayedUser.following || []).includes(u.id) || (displayedUser.id === currentUser.id && (currentUser.following || []).includes(u.id)))
+                    : targetUsers.filter(u => (u.following || []).includes(displayedUser.id));
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-slate-400 text-sm">
+                        No {listModalType} found
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((user) => (
+                    <div
+                      key={user.id}
+                      onClick={() => {
+                        setListModalType(null);
+                        onUserClick?.(user);
+                      }}
+                      className="flex items-center justify-between p-3 rounded-[16px] neu-raised hover:bg-slate-50 transition cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={user.avatar || DEFAULT_AVATAR}
+                          alt={user.name}
+                          className="w-11 h-11 rounded-full object-cover neu-inset"
+                        />
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1">
+                            {user.name}
+                            {user.isVerified && <CheckCircle2 className="w-3.5 h-3.5 text-[#5B9DFF] fill-current" />}
+                          </h4>
+                          <p className="text-xs text-slate-400">@{user.username}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-[#5B9DFF] neu-raised px-3 py-1.5 rounded-full">
+                        View
+                      </span>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -520,6 +520,12 @@ export const uploadMediaToStorage = async (
     } else if (typeof dataOrUrlOrFile === 'string' && dataOrUrlOrFile.startsWith('data:')) {
       // Base64 Data URL string upload
       await uploadString(storageRef, dataOrUrlOrFile, 'data_url');
+    } else if (typeof dataOrUrlOrFile === 'string' && dataOrUrlOrFile.startsWith('blob:')) {
+      // Fetch blob URL and upload as binary blob
+      const res = await fetch(dataOrUrlOrFile);
+      const b = await res.blob();
+      const metadata = contentType ? { contentType } : undefined;
+      await uploadBytes(storageRef, b, metadata);
     } else if (typeof dataOrUrlOrFile === 'string') {
       // Raw string format
       await uploadString(storageRef, dataOrUrlOrFile, 'raw', contentType ? { contentType } : undefined);

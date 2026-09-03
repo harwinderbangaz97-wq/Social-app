@@ -80,6 +80,7 @@ import {
   serverTimestamp,
   getPostsFromFirestore,
   getUsersFromFirestore,
+  getUserFollowingsFromFirestore,
 } from './services/firebase';
 import {
   sendChatMessage,
@@ -205,6 +206,21 @@ function AppContent() {
       isOnline: false,
     };
   });
+
+  useEffect(() => {
+    if (currentUser && currentUser.id) {
+      getUserFollowingsFromFirestore(currentUser.id).then((followings) => {
+        if (followings && followings.length >= 0) {
+          setCurrentUser(prev => ({
+            ...prev,
+            following: followings,
+            followingCount: followings.length,
+          }));
+        }
+      }).catch(console.warn);
+    }
+  }, [currentUser?.id]);
+
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
   const handleFinishSplash = () => {
@@ -881,13 +897,17 @@ function AppContent() {
     if (!currentUser || !currentUser.id || !targetUserId) return;
     
     const targetUser = users.find(u => u.id === targetUserId);
-    const isCurrentlyFollowing = Boolean(targetUser?.isFollowing);
-    
+    const isCurrentlyFollowing = Boolean(currentUser.following?.includes(targetUserId)) || Boolean(targetUser?.isFollowing);
+    const nextFollowing = !isCurrentlyFollowing;
+
+    const updatedFollowing = nextFollowing
+      ? Array.from(new Set([...(currentUser.following || []), targetUserId]))
+      : (currentUser.following || []).filter(id => id !== targetUserId);
+
     // Optimistic UI update
     setUsers((prevUsers) =>
       prevUsers.map((u) => {
         if (u.id === targetUserId) {
-          const nextFollowing = !isCurrentlyFollowing;
           return {
             ...u,
             isFollowing: nextFollowing,
@@ -900,7 +920,8 @@ function AppContent() {
 
     setCurrentUser((prev) => ({
       ...prev,
-      followingCount: Math.max(0, (prev.followingCount || 0) + (isCurrentlyFollowing ? -1 : 1)),
+      following: updatedFollowing,
+      followingCount: updatedFollowing.length,
     }));
 
     try {
@@ -1728,6 +1749,8 @@ function AppContent() {
               lockedChatUserIds={lockedChatUserIds}
               onToggleLockChat={handleToggleLockChat}
               onClearChat={handleClearChatThread}
+              allUsers={users}
+              onUserClick={handleOpenProfile}
             />
           )}
         </Suspense>

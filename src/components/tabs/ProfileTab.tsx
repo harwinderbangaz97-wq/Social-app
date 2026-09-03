@@ -19,6 +19,8 @@ interface ProfileTabProps {
   lockedChatUserIds: string[];
   onToggleLockChat: (userId: string) => void;
   onClearChat: (threadId: string) => void;
+  allUsers?: User[];
+  onUserClick?: (user: User) => void;
 }
 
 export const ProfileTab: React.FC<ProfileTabProps> = (props) => {
