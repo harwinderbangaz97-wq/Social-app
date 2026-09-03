@@ -114,17 +114,25 @@ export const getStorageClient = () => {
   return storageClient;
 };
 
-// Keep an authenticated session active (anonymous sign-in fallback ensures security rules pass smoothly)
+// Keep an authenticated session active and resolve instantly if available
 export const ensureFirebaseAuth = async (): Promise<FirebaseUser | null> => {
+  if (auth.currentUser) return auth.currentUser;
   return new Promise((resolve) => {
+    let resolved = false;
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      unsubscribe();
-      if (user) {
-        resolve(user);
-      } else {
-        resolve(null);
+      if (!resolved) {
+        resolved = true;
+        unsubscribe();
+        resolve(user || auth.currentUser || null);
       }
     });
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        unsubscribe();
+        resolve(auth.currentUser || null);
+      }
+    }, 600);
   });
 };
 
@@ -941,16 +949,16 @@ export const getUsersFromFirestore = async (): Promise<User[]> => {
     await ensureFirebaseAuth();
     const usersRef = collection(db, 'users');
     const querySnapshot = await getDocs(usersRef);
-    const result: User[] = [];
+    const map = new Map<string, User>();
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
         const u = normalizeUser({ ...docSnap.data(), id: docSnap.id });
         if (u && u.id) {
-          result.push(u);
+          map.set(u.id, u);
         }
       }
     });
-    return result;
+    return Array.from(map.values());
   } catch (error) {
     console.warn('Firestore getUsers fallback:', error);
     return [];
