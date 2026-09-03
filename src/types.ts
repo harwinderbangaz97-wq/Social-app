@@ -23,6 +23,7 @@ export interface User {
   id: string;
   uid?: string;
   name: string;
+  displayName?: string;
   username: string;
   avatar: string;
   bio?: string;

@@ -57,12 +57,24 @@ const SearchPeopleViewComponent: React.FC<SearchPeopleViewProps> = ({
   });
   const uniqueUsers = Array.from(uniqueUsersMap.values());
 
+  const query = searchQuery.toLowerCase().trim();
+
   const filteredUsers = uniqueUsers.filter((user) => {
-    const matchesQuery =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.bio && user.bio.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (user.location && user.location.toLowerCase().includes(searchQuery.toLowerCase()));
+    const usernameVal = (user.username || '').toLowerCase();
+    const displayNameVal = ((user as any).displayName || user.name || '').toLowerCase();
+    const emailVal = (user.email || '').toLowerCase();
+    const nameVal = (user.name || '').toLowerCase();
+    const bioVal = (user.bio || '').toLowerCase();
+    const locationVal = (user.location || '').toLowerCase();
+
+    // Search Fallback: If query is empty or matches all, return all registered users instead of an empty list when exploring.
+    const matchesQuery = !query ||
+      usernameVal.includes(query) ||
+      displayNameVal.includes(query) ||
+      emailVal.includes(query) ||
+      nameVal.includes(query) ||
+      bioVal.includes(query) ||
+      locationVal.includes(query);
 
     if (!matchesQuery) return false;
 

@@ -836,22 +836,23 @@ export const syncUserProfileToFirestore = async (user: Partial<User>): Promise<v
     if (!user || !user.id) return;
     const userRef = doc(db, 'users', user.id);
     const snap = await getDoc(userRef);
-    if (snap.exists()) {
-      const existingData = snap.data();
-      await setDoc(userRef, {
-        ...existingData,
-        ...user,
-        id: user.id,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-    } else {
-      await setDoc(userRef, {
-        ...user,
-        id: user.id,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+    const displayNameVal = user.displayName || user.name || '';
+    const usernameVal = (user.username || displayNameVal || `user_${user.id.slice(0, 6)}`).toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const emailVal = user.email || '';
+
+    const payload = {
+      ...user,
+      id: user.id,
+      displayName: displayNameVal,
+      name: displayNameVal || user.name || 'Funshann Member',
+      username: usernameVal,
+      email: emailVal,
+      updatedAt: serverTimestamp(),
+    };
+    if (!snap.exists()) {
+      (payload as any).createdAt = serverTimestamp();
     }
+    await setDoc(userRef, payload, { merge: true });
   } catch (error) {
     console.warn('Firestore user profile sync fallback to local:', error);
   }
