@@ -80,7 +80,10 @@ export {
   getRedirectResult,
   GoogleAuthProvider,
   FacebookAuthProvider,
-  signOut
+  signOut,
+  doc,
+  setDoc,
+  serverTimestamp
 };
 
 // Initialize single Firestore instance (with databaseId fallback if configured)
@@ -922,6 +925,27 @@ export const subscribeToUsers = (callback: (users: User[]) => void): (() => void
   } catch (err) {
     console.warn('Failed to subscribe to users:', err);
     return () => {};
+  }
+};
+
+export const getUsersFromFirestore = async (): Promise<User[]> => {
+  try {
+    await ensureFirebaseAuth();
+    const usersRef = collection(db, 'users');
+    const querySnapshot = await getDocs(usersRef);
+    const result: User[] = [];
+    querySnapshot.forEach((docSnap) => {
+      if (docSnap.exists()) {
+        const u = normalizeUser({ ...docSnap.data(), id: docSnap.id });
+        if (u && u.id) {
+          result.push(u);
+        }
+      }
+    });
+    return result;
+  } catch (error) {
+    console.warn('Firestore getUsers fallback:', error);
+    return [];
   }
 };
 

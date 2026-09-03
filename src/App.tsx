@@ -73,6 +73,12 @@ import {
   followUser,
   unfollowUser,
   DEFAULT_AVATAR,
+  db,
+  doc,
+  setDoc,
+  serverTimestamp,
+  getPostsFromFirestore,
+  getUsersFromFirestore,
 } from './services/firebase';
 import {
   sendChatMessage,
@@ -152,27 +158,61 @@ function AppContent() {
     canGoBack,
   } = useNavigation();
 
-  const [currentUser, setCurrentUser] = useState<User>({
-    id: '',
-    name: '',
-    username: '',
-    avatar: DEFAULT_AVATAR,
-    bio: '',
-    location: '',
-    website: '',
-    interests: [],
-    socialLinks: [],
-    birthday: '',
-    mobileNumber: '',
-    email: '',
-    twoFactorEnabled: false,
-    twoFactorMethod: 'authenticator',
-    usernameLastChangedAt: new Date().toISOString(),
-    postsCount: 0,
-    followersCount: 0,
-    followingCount: 0,
-    isVerified: false,
-    isOnline: false,
+  const [currentUser, setCurrentUser] = useState<User>(() => {
+    try {
+      const saved = localStorage.getItem('funshann_current_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id) {
+          return {
+            id: parsed.id || '',
+            name: parsed.name || '',
+            username: parsed.username || '',
+            avatar: parsed.avatar || DEFAULT_AVATAR,
+            bio: parsed.bio || '',
+            location: parsed.location || '',
+            website: parsed.website || '',
+            interests: parsed.interests || [],
+            socialLinks: parsed.socialLinks || [],
+            birthday: parsed.birthday || '',
+            mobileNumber: parsed.mobileNumber || '',
+            email: parsed.email || '',
+            twoFactorEnabled: parsed.twoFactorEnabled || false,
+            twoFactorMethod: parsed.twoFactorMethod || 'authenticator',
+            usernameLastChangedAt: parsed.usernameLastChangedAt || new Date().toISOString(),
+            postsCount: parsed.postsCount || 0,
+            followersCount: parsed.followersCount || 0,
+            followingCount: parsed.followingCount || 0,
+            isVerified: parsed.isVerified || false,
+            isOnline: parsed.isOnline || false,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load currentUser from localStorage:', e);
+    }
+    return {
+      id: '',
+      name: '',
+      username: '',
+      avatar: DEFAULT_AVATAR,
+      bio: '',
+      location: '',
+      website: '',
+      interests: [],
+      socialLinks: [],
+      birthday: '',
+      mobileNumber: '',
+      email: '',
+      twoFactorEnabled: false,
+      twoFactorMethod: 'authenticator',
+      usernameLastChangedAt: new Date().toISOString(),
+      postsCount: 0,
+      followersCount: 0,
+      followingCount: 0,
+      isVerified: false,
+      isOnline: false,
+    };
   });
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
@@ -292,13 +332,25 @@ function AppContent() {
               avatar: remoteUser.avatar || prev.avatar || DEFAULT_AVATAR,
             }));
           } else {
-             // If no profile exists, maybe it's a new user, initialize with Firebase info
-             setCurrentUser(prev => ({
-                ...prev,
-                id: user.uid,
-                email: user.email || prev.email,
-                avatar: prev.avatar || DEFAULT_AVATAR,
-             }));
+             // If no profile exists, ensure corresponding profile document in Firestore (users collection using user.uid)
+             const newUserDoc: User = {
+               id: user.uid,
+               name: user.displayName || user.email?.split('@')[0] || 'Funshann Member',
+               username: (user.displayName || user.email?.split('@')[0] || `user_${user.uid.slice(0, 6)}`).toLowerCase().replace(/[^a-z0-9_]/g, ''),
+               email: user.email || '',
+               avatar: user.photoURL || DEFAULT_AVATAR,
+               bio: 'Building real connections on Funshann 📸✨',
+               postsCount: 0,
+               followersCount: 0,
+               followingCount: 0,
+               isVerified: false,
+             };
+             await setDoc(doc(db, 'users', user.uid), {
+               ...newUserDoc,
+               createdAt: serverTimestamp(),
+               updatedAt: serverTimestamp(),
+             }, { merge: true });
+             setCurrentUser(newUserDoc);
           }
         } catch (err) {
           console.error("Auth state change profile fetch error:", err);
@@ -307,6 +359,41 @@ function AppContent() {
         setIsAuthenticated(false);
       }
     });
+
+    // Explicitly fetch posts and community users directly from Firestore on app load
+    getPostsFromFirestore().then((remotePosts) => {
+      if (remotePosts && remotePosts.length > 0) {
+        setPosts((prevPosts) => {
+          const map = new Map<string, Post>();
+          remotePosts.forEach((p) => {
+            if (p && p.id && isValidMediaUrl(p.imageUrl)) {
+              map.set(p.id, p);
+            }
+          });
+          prevPosts.forEach((p) => map.set(p.id, p));
+          return Array.from(map.values()).sort((a, b) => {
+            const timeA = a.createdAtMs || 0;
+            const timeB = b.createdAtMs || 0;
+            return timeB - timeA;
+          });
+        });
+      }
+    }).catch(console.warn);
+
+    getUsersFromFirestore().then((remoteUsers) => {
+      if (remoteUsers && remoteUsers.length > 0) {
+        setUsers((prevUsers) => {
+          const map = new Map<string, User>();
+          remoteUsers.forEach((u) => {
+            if (u && u.id) {
+              map.set(u.id, u);
+            }
+          });
+          prevUsers.forEach((u) => map.set(u.id, u));
+          return Array.from(map.values());
+        });
+      }
+    }).catch(console.warn);
 
     // 2. Real-time Firestore Subscriptions for Posts, Stories, Chat Threads, Users, and Notifications
     const unsubPosts = subscribeToPosts((remotePosts) => {
