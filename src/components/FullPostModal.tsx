@@ -301,6 +301,8 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
               <img
                 src={post.imageUrl}
                 alt={post.caption || 'Post image'}
+                loading="lazy"
+                decoding="async"
                 className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl select-none"
               />
             )}
@@ -318,6 +320,8 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
                 <img
                   src={postAuthor.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                   alt={postAuthor.name}
+                  loading="lazy"
+                  decoding="async"
                   className="w-9 h-9 rounded-full object-cover border border-white/20"
                 />
                 <div>

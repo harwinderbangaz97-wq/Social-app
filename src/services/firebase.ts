@@ -20,6 +20,9 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection,
   doc,
   setDoc,
@@ -88,11 +91,27 @@ export {
   serverTimestamp
 };
 
-// Initialize single Firestore instance (with databaseId fallback if configured)
+// Initialize single Firestore instance with persistent local cache (IndexedDB multi-tab)
 const customDatabaseId = (firebaseAppletConfig as any)?.firestoreDatabaseId || 'ai-studio-socialapp-62fabc41-f69f-4729-9770-35262e6cbe5b';
-export const db = customDatabaseId
-  ? getFirestore(app, customDatabaseId)
-  : getFirestore(app);
+export const db = (() => {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      },
+      customDatabaseId
+    );
+  } catch (err) {
+    try {
+      return customDatabaseId ? getFirestore(app, customDatabaseId) : getFirestore(app);
+    } catch {
+      return getFirestore(app);
+    }
+  }
+})();
 
 // Initialize single Firebase Cloud Storage instance
 export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
@@ -1042,13 +1061,23 @@ export const updatePostInFirestore = async (postId: string, updates: Partial<Pos
   }
 };
 
-export const getPostsFromFirestore = async (limitCount = 25): Promise<Post[]> => {
+let lastPostDocSnapshot: any = null;
+
+export const getPostsFromFirestore = async (limitCount = 15, resetPagination = true): Promise<Post[]> => {
   try {
     await ensureFirebaseAuth();
     const postsRef = collection(db, 'posts');
-    const q = query(postsRef, limit(limitCount));
+    let q = query(postsRef, limit(limitCount));
+    if (!resetPagination && lastPostDocSnapshot) {
+      q = query(postsRef, startAfter(lastPostDocSnapshot), limit(limitCount));
+    }
     const querySnapshot = await getDocs(q);
     const result: Post[] = [];
+    if (!querySnapshot.empty) {
+      lastPostDocSnapshot = querySnapshot.docs[querySnapshot.docs.length - 1];
+    } else if (resetPagination) {
+      lastPostDocSnapshot = null;
+    }
     querySnapshot.forEach((docSnap) => {
       if (docSnap.exists()) {
         const p = normalizePost({ ...docSnap.data(), id: docSnap.id });
@@ -1065,7 +1094,11 @@ export const getPostsFromFirestore = async (limitCount = 25): Promise<Post[]> =>
   }
 };
 
-export const subscribeToPosts = (callback: (posts: Post[]) => void, limitCount = 25): (() => void) => {
+export const loadMorePostsFromFirestore = async (limitCount = 15): Promise<Post[]> => {
+  return getPostsFromFirestore(limitCount, false);
+};
+
+export const subscribeToPosts = (callback: (posts: Post[]) => void, limitCount = 15): (() => void) => {
   try {
     const postsRef = collection(db, 'posts');
     const q = query(postsRef, limit(limitCount));
@@ -1173,11 +1206,11 @@ export const subscribeToChatMessages = (threadId: string, callback: (messages: M
   }
 };
 
-export const getChatThreadsFromFirestore = async (): Promise<ChatThread[]> => {
+export const getChatThreadsFromFirestore = async (limitCount = 25): Promise<ChatThread[]> => {
   try {
     await ensureFirebaseAuth();
     const threadsRef = collection(db, 'chat_threads');
-    const q = query(threadsRef, limit(100));
+    const q = query(threadsRef, limit(limitCount));
     const querySnapshot = await getDocs(q);
     const result: ChatThread[] = [];
     querySnapshot.forEach((docSnap) => {
@@ -1192,11 +1225,12 @@ export const getChatThreadsFromFirestore = async (): Promise<ChatThread[]> => {
   }
 };
 
-export const subscribeToChatThreads = (callback: (threads: ChatThread[]) => void): (() => void) => {
+export const subscribeToChatThreads = (callback: (threads: ChatThread[]) => void, limitCount = 25): (() => void) => {
   try {
     const threadsRef = collection(db, 'chat_threads');
+    const q = query(threadsRef, limit(limitCount));
     const unsubscribe = onSnapshot(
-      threadsRef,
+      q,
       (snapshot) => {
         const result: ChatThread[] = [];
         snapshot.forEach((docSnap) => {

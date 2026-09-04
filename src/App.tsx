@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Component, ErrorInfo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, Component, ErrorInfo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, Loader2 } from 'lucide-react';
 import {
@@ -79,6 +79,7 @@ import {
   setDoc,
   serverTimestamp,
   getPostsFromFirestore,
+  loadMorePostsFromFirestore,
   getUsersFromFirestore,
   getUserFollowingsFromFirestore,
 } from './services/firebase';
@@ -304,9 +305,45 @@ function AppContent() {
   const [users, setUsers] = useState<User[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [hasMorePosts, setHasMorePosts] = useState<boolean>(true);
+  const [isLoadingMorePosts, setIsLoadingMorePosts] = useState<boolean>(false);
   const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isCreatingStory, setIsCreatingStory] = useState<boolean>(false);
+
+  // Lazy loading / Infinite scroll pagination for older posts
+  const handleLoadMorePosts = useCallback(async () => {
+    if (isLoadingMorePosts || !hasMorePosts) return;
+    setIsLoadingMorePosts(true);
+    try {
+      const olderPosts = await loadMorePostsFromFirestore(15);
+      if (!olderPosts || olderPosts.length === 0) {
+        setHasMorePosts(false);
+      } else {
+        setPosts((prevPosts) => {
+          const map = new Map<string, Post>();
+          prevPosts.forEach((p) => map.set(p.id, p));
+          olderPosts.forEach((p) => {
+            if (p && p.id) {
+              map.set(p.id, p);
+            }
+          });
+          return Array.from(map.values()).sort((a, b) => {
+            const timeA = a.createdAtMs || 0;
+            const timeB = b.createdAtMs || 0;
+            return timeB - timeA;
+          });
+        });
+        if (olderPosts.length < 15) {
+          setHasMorePosts(false);
+        }
+      }
+    } catch (err) {
+      console.warn('Error loading more posts:', err);
+    } finally {
+      setIsLoadingMorePosts(false);
+    }
+  }, [isLoadingMorePosts, hasMorePosts]);
 
   // App Permissions State from central PermissionAndMediaContext
   const { permissionsState, setAllPermissions } = usePermissionAndMedia();
@@ -863,11 +900,17 @@ function AppContent() {
       comments: [],
     };
 
-    // 1. Persist to Firestore collection 'posts' first and await before adding to local state / resetting
-    await syncPostToFirestore(createdPost).catch(console.warn);
-
-    // 2. Add to local state
+    // 1. Optimistic UI: Immediately add to local feed, increment user post count, navigate, and notify
     setPosts((prevPosts) => [createdPost, ...prevPosts.filter((p) => p.id !== createdPost.id)]);
+    setCurrentUser((prev) => ({
+      ...prev,
+      postsCount: prev.postsCount + 1,
+    }));
+    navigateToTab('home');
+    showToast('Your photo has been shared to Funshann!');
+
+    // 2. Persist to Firestore collection 'posts' in background
+    syncPostToFirestore(createdPost).catch(console.warn);
 
     // 3. If post image is local data URL, upload to Firebase Storage, validate download URL, and update Firestore
     if (createdPost.imageUrl && createdPost.imageUrl.startsWith('data:')) {
@@ -883,13 +926,6 @@ function AppContent() {
         })
         .catch(console.warn);
     }
-
-    setCurrentUser((prev) => ({
-      ...prev,
-      postsCount: prev.postsCount + 1,
-    }));
-    navigateToTab('home');
-    showToast('Your photo has been shared to Funshann!');
   };
 
   // Follow / Unfollow user
@@ -1679,6 +1715,9 @@ function AppContent() {
               onHidePost={handleHidePost}
               onUpdateCaption={handleUpdateCaption}
               onShowToast={showToast}
+              onLoadMore={handleLoadMorePosts}
+              hasMore={hasMorePosts}
+              isLoadingMore={isLoadingMorePosts}
             />
           )}
 

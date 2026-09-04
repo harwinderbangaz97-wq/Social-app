@@ -103,6 +103,8 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
               <img
                 src={postAuthor.avatar}
                 alt={postAuthor.name}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full rounded-full object-cover"
               />
             </div>
@@ -150,6 +152,8 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                         <img
                           src={commentUser.avatar}
                           alt={commentUser.name}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full rounded-full object-cover"
                         />
                       </div>
@@ -251,6 +255,8 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
               <img
                 src={currentAvatar}
                 alt="Me"
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
             </div>

@@ -30,6 +30,8 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           <img
             src="/logo.png"
             alt="Funshann"
+            loading="lazy"
+            decoding="async"
             className="w-10 h-10 rounded-full object-cover shadow-sm border border-slate-200/80"
             onError={(e) => {
               e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23ffffff'/%3E%3Ctext x='50' y='68' font-size='55' font-weight='bold' text-anchor='middle' fill='%23000000' font-family='sans-serif'%3EF%3C/text%3E%3C/svg%3E";
