@@ -74,25 +74,7 @@ export const AccountSecurityHubSubPage: React.FC<AccountSecurityHubSubPageProps>
             <ChevronRight className="w-4 h-4 text-slate-400" />
           </button>
 
-          {/* Mobile Number */}
-          <button
-            type="button"
-            onClick={() => onNavigateSection('mobile')}
-            className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full neu-raised flex items-center justify-center text-emerald-600">
-                <Phone className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-800">Mobile Number</p>
-                <p className="text-[11px] text-slate-500">
-                  {currentUser.mobileNumber || '+1 (555) 382-9901'}
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-slate-400" />
-          </button>
+
 
           {/* Email Address */}
           <button

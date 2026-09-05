@@ -68,7 +68,6 @@ import { AndroidSystemSettingsModal } from './AndroidSystemSettingsModal';
 // Subpage Components
 import {
   UsernameSubPage,
-  MobileNumberSubPage,
   EmailSubPage,
   PasswordSubPage,
   TwoFactorSubPage,
@@ -144,7 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdatePermissions,
   onRerunPermissionOnboarding,
 }) => {
-  const { navState, setSettingsSection, goBack, closeSettings, setIsEditProfileOpen } = useNavigation();
+  const { navState, setSettingsSection, goBack, closeSettings, setIsEditProfileOpen, navigateToTab } = useNavigation();
   const { t, languageObj } = useTranslation();
   const currentSection: SettingsSection = (navState.settingsSection || initialSection || 'main') as SettingsSection;
   const setCurrentSection = (sec: SettingsSection) => setSettingsSection(sec);
@@ -745,13 +744,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
           )}
 
-          {currentSection === 'mobile' && (
-            <MobileNumberSubPage
-              currentUser={currentUser}
-              onUpdateUser={onUpdateUser}
-              onShowToast={onShowToast}
-            />
-          )}
+
 
           {currentSection === 'email' && (
             <EmailSubPage

@@ -22,11 +22,14 @@ import {
   ChevronDown,
   ChevronUp,
   Smile,
+  Plus,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, User, PostReaction } from '../types';
 import { UniversalReportModal } from './UniversalReportModal';
 import { EmojiPickerPopup } from './EmojiPickerPopup';
+import { StickerPickerModal } from './StickerPickerModal';
+import { getRecentStickers, addRecentSticker } from '../utils/stickerUtils';
 import { useTranslation } from '../context/LanguageContext';
 import { formatRelativeTime, formatDetailed12HourTime } from '../services/timeUtils';
 import { useLongPress } from '../hooks/useLongPress';
@@ -127,6 +130,9 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showQuickReaction, setShowQuickReaction] = useState(false);
+  const [showStickerModal, setShowStickerModal] = useState(false);
+  const [recentStickers, setRecentStickers] = useState<string[]>([]);
   const [activeBurstEmoji, setActiveBurstEmoji] = useState<string | null>(null);
   const [engagementModal, setEngagementModal] = useState<{
     isOpen: boolean;
@@ -138,6 +144,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
     initialFilterEmoji: null,
   });
   const emojiPickerContainerRef = useRef<HTMLDivElement>(null);
+  const quickReactionRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
   const tapTimeoutRef = useRef<any>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -305,6 +312,26 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
     };
   }, [showOptionsMenu]);
 
+  // Load recent stickers on mount or state change
+  useEffect(() => {
+    setRecentStickers(getRecentStickers());
+  }, [showQuickReaction, showStickerModal]);
+
+  // Close quick reaction on click outside
+  useEffect(() => {
+    const handleQuickReactionOutside = (e: MouseEvent) => {
+      if (quickReactionRef.current && !quickReactionRef.current.contains(e.target as Node)) {
+        setShowQuickReaction(false);
+      }
+    };
+    if (showQuickReaction) {
+      document.addEventListener('mousedown', handleQuickReactionOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleQuickReactionOutside);
+    };
+  }, [showQuickReaction]);
+
   // Media tap handling (Single tap -> Open Post, Double tap -> Like)
   const handleMediaTap = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -434,7 +461,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28 }}
-      className="w-full max-w-lg mx-auto px-3 sm:px-4 mb-4"
+      className="w-full max-w-[550px] md:max-w-[570px] mx-auto px-3 sm:px-4 mb-4"
     >
       <div
         className="w-full bg-white rounded-[24px] border border-slate-100/90 shadow-[0_2px_14px_rgba(0,0,0,0.05)] overflow-hidden transition-all group"
@@ -677,10 +704,10 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
           </div>
         </div>
 
-        {/* Middle: 4:5 Portrait Media Content with Floating Overlaid Engagement Controls */}
+        {/* Middle: 3:4 Portrait Media Content with Floating Overlaid Engagement Controls */}
         <div className="px-3 sm:px-3.5 py-1">
           <div
-            className="relative w-full aspect-[4/5] rounded-[22px] overflow-hidden bg-slate-950 cursor-pointer select-none shadow-xs"
+            className="relative w-full aspect-[3/4] rounded-[22px] overflow-hidden bg-slate-950 cursor-pointer select-none shadow-xs"
             onClick={handleMediaTap}
           >
             {isVideo ? (
@@ -742,9 +769,95 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
 
             {/* Floating Overlaid Engagement Controls on Right Edge (Like, Dislike, Comments, Share) */}
             <div
-              className="absolute bottom-3.5 right-3 sm:right-3.5 flex flex-col items-center gap-3 z-10"
+              className="absolute bottom-3.5 right-3 sm:right-3.5 flex flex-col items-center gap-3.5 z-10"
               onClick={(e) => e.stopPropagation()}
             >
+              {/* 😊 Reaction Button with 7 Sticker popup */}
+              <div className="relative flex flex-col items-center" ref={quickReactionRef}>
+                <motion.button
+                  id={`reaction-btn-${post.id}`}
+                  type="button"
+                  whileTap={{ scale: 0.88 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickReaction((prev) => !prev);
+                  }}
+                  aria-label="React with sticker"
+                  title="React with sticker"
+                  className="flex flex-col items-center gap-0.5 cursor-pointer group select-none touch-manipulation focus:outline-none animate-fade-in"
+                >
+                  <div
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all backdrop-blur-md shadow-[0_4px_14px_rgba(0,0,0,0.35)] ${
+                      post.userEmojiReaction
+                        ? 'bg-[#5B9DFF] text-white ring-2 ring-white/70 shadow-[0_4px_16px_rgba(91,157,255,0.5)]'
+                        : 'bg-black/40 hover:bg-black/55 text-white border border-white/30'
+                    }`}
+                  >
+                    {post.userEmojiReaction ? (
+                      <span className="text-lg leading-none scale-110">{post.userEmojiReaction}</span>
+                    ) : (
+                      <Smile className="w-4.5 h-4.5 text-white group-hover:scale-110 drop-shadow-sm" />
+                    )}
+                  </div>
+                  <span className="text-[11px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                    {post.userEmojiReaction ? 'Reacted' : 'React'}
+                  </span>
+                </motion.button>
+
+                {/* 7 Recent/Most Used Stickers Quick Reaction Bar */}
+                <AnimatePresence>
+                  {showQuickReaction && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8, x: 25, y: -20 }}
+                      animate={{ opacity: 1, scale: 1, x: 0, y: -20 }}
+                      exit={{ opacity: 0, scale: 0.8, x: 25, y: -20 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                      className="absolute right-12 top-1/2 -translate-y-1/2 z-40 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200/90 shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+                    >
+                      {recentStickers.map((sticker) => {
+                        const isSelected = post.userEmojiReaction === sticker;
+                        return (
+                          <motion.button
+                            key={sticker}
+                            whileHover={{ scale: 1.25, y: -2 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectEmojiReaction(sticker);
+                              addRecentSticker(sticker);
+                              setShowQuickReaction(false);
+                            }}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center text-lg hover:bg-slate-100 transition-all cursor-pointer relative ${
+                              isSelected ? 'bg-blue-100/90 ring-1 ring-[#5B9DFF]' : ''
+                            }`}
+                            title={`React with ${sticker}`}
+                          >
+                            <span>{sticker}</span>
+                            {isSelected && (
+                              <span className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-[#5B9DFF]" />
+                            )}
+                          </motion.button>
+                        );
+                      })}
+                      {/* Plus button at the end of the bar */}
+                      <motion.button
+                        whileHover={{ scale: 1.15 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowQuickReaction(false);
+                          setShowStickerModal(true);
+                        }}
+                        className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-lg cursor-pointer transition-colors"
+                        title="More stickers..."
+                      >
+                        <Plus className="w-4 h-4 text-slate-600" />
+                      </motion.button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
               {/* 👍 1. Like Action (Short tap: Like/Unlike, Long-press: Reacted/Liked by list) */}
               <motion.button
                 id={`like-btn-${post.id}`}
@@ -756,21 +869,21 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 className="flex flex-col items-center gap-0.5 cursor-pointer group select-none touch-manipulation focus:outline-none"
               >
                 <div
-                  className={`w-11 h-11 rounded-full flex items-center justify-center transition-all backdrop-blur-md shadow-[0_4px_14px_rgba(0,0,0,0.35)] ${
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-all backdrop-blur-md shadow-[0_4px_14px_rgba(0,0,0,0.35)] ${
                     post.isLiked
                       ? 'bg-[#5B9DFF] text-white ring-2 ring-white/70 shadow-[0_4px_16px_rgba(91,157,255,0.5)]'
                       : 'bg-black/40 hover:bg-black/55 text-white border border-white/30'
                   }`}
                 >
                   <ThumbsUp
-                    className={`w-5.5 h-5.5 transition-transform ${
+                    className={`w-4.5 h-4.5 transition-transform ${
                       post.isLiked
                         ? 'fill-white text-white scale-110'
                         : 'text-white group-hover:scale-110 drop-shadow-sm'
                     }`}
                   />
                 </div>
-                <span className="text-[12px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                <span className="text-[11px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
                   {post.likesCount.toLocaleString()}
                 </span>
               </motion.button>
@@ -792,21 +905,21 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 className="flex flex-col items-center gap-0.5 cursor-pointer group select-none touch-manipulation focus:outline-none"
               >
                 <div
-                  className={`w-11 h-11 rounded-full flex items-center justify-center transition-all backdrop-blur-md shadow-[0_4px_14px_rgba(0,0,0,0.35)] ${
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-all backdrop-blur-md shadow-[0_4px_14px_rgba(0,0,0,0.35)] ${
                     post.isDisliked
                       ? 'bg-rose-500 text-white ring-2 ring-white/70 shadow-[0_4px_16px_rgba(244,63,94,0.5)]'
                       : 'bg-black/40 hover:bg-black/55 text-white border border-white/30'
                   }`}
                 >
                   <ThumbsDown
-                    className={`w-5.5 h-5.5 transition-transform ${
+                    className={`w-4.5 h-4.5 transition-transform ${
                       post.isDisliked
                         ? 'fill-white text-white scale-110'
                         : 'text-white group-hover:scale-110 drop-shadow-sm'
                     }`}
                   />
                 </div>
-                <span className="text-[12px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                <span className="text-[11px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
                   {(post.dislikesCount || 0).toLocaleString()}
                 </span>
               </motion.button>
@@ -821,10 +934,10 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 title="Hold to see who commented"
                 className="flex flex-col items-center gap-0.5 cursor-pointer group select-none touch-manipulation focus:outline-none"
               >
-                <div className="w-11 h-11 rounded-full bg-black/40 hover:bg-black/55 text-white border border-white/30 backdrop-blur-md flex items-center justify-center transition-all shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
-                  <MessageCircle className="w-5.5 h-5.5 text-white transition-transform group-hover:scale-110 drop-shadow-sm" />
+                <div className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/55 text-white border border-white/30 backdrop-blur-md flex items-center justify-center transition-all shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
+                  <MessageCircle className="w-4.5 h-4.5 text-white transition-transform group-hover:scale-110 drop-shadow-sm" />
                 </div>
-                <span className="text-[12px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                <span className="text-[11px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
                   {post.commentsCount}
                 </span>
               </motion.button>
@@ -841,10 +954,10 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 aria-label={t('feed_share_button')}
                 className="flex flex-col items-center gap-0.5 cursor-pointer group select-none touch-manipulation focus:outline-none"
               >
-                <div className="w-11 h-11 rounded-full bg-black/40 hover:bg-black/55 text-white border border-white/30 backdrop-blur-md flex items-center justify-center transition-all shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
-                  <Share2 className="w-5.5 h-5.5 text-white transition-transform group-hover:scale-110 drop-shadow-sm" />
+                <div className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/55 text-white border border-white/30 backdrop-blur-md flex items-center justify-center transition-all shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
+                  <Share2 className="w-4.5 h-4.5 text-white transition-transform group-hover:scale-110 drop-shadow-sm" />
                 </div>
-                <span className="text-[12px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                <span className="text-[11px] font-bold text-white font-['Outfit'] tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
                   {t('feed_share_button')}
                 </span>
               </motion.button>
@@ -889,16 +1002,6 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
             <div className="space-y-1.5">
               {/* Main Caption Line */}
               <div className="text-[15px] text-slate-800 leading-relaxed font-normal">
-                <span
-                  className="font-bold text-slate-900 mr-2 cursor-pointer hover:text-[#5B9DFF] transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onUserClick) onUserClick(postAuthor);
-                  }}
-                >
-                  {postAuthor.name}
-                </span>
-
                 {isExpanded ? (
                   <span>{post.caption}</span>
                 ) : (
@@ -1025,20 +1128,20 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 value={commentInput}
                 onChange={(e) => setCommentInput(e.target.value)}
                 placeholder={t('feed_write_comment_placeholder')}
-                className="w-full text-[14.5px] h-11.5 pl-4 pr-16 rounded-full neu-inset text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/40"
+                className="w-full text-xs h-9 pl-3.5 pr-16 rounded-full neu-inset text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/40"
               />
-              <div className="absolute right-2 flex items-center gap-1" ref={emojiPickerContainerRef}>
+              <div className="absolute right-1.5 flex items-center gap-1" ref={emojiPickerContainerRef}>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowEmojiPicker((prev) => !prev);
                   }}
-                  className="w-7.5 h-7.5 rounded-full flex items-center justify-center text-slate-400 hover:text-[#5B9DFF] hover:bg-slate-100 transition cursor-pointer"
+                  className="w-6.5 h-6.5 rounded-full flex items-center justify-center text-slate-400 hover:text-[#5B9DFF] hover:bg-slate-100 transition cursor-pointer"
                   title="Add reaction emoji"
                   aria-label="Add reaction emoji"
                 >
-                  <Smile className="w-4.5 h-4.5" />
+                  <Smile className="w-3.5 h-3.5" />
                 </button>
                 {commentInput.trim() && (
                   <motion.button
@@ -1134,6 +1237,16 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
         allUsers={allUsers}
         onUserClick={onUserClick}
         initialFilterEmoji={engagementModal.initialFilterEmoji}
+      />
+
+      {/* 7 Sticker Picker Modal */}
+      <StickerPickerModal
+        isOpen={showStickerModal}
+        onClose={() => setShowStickerModal(false)}
+        onSelectSticker={(emoji) => {
+          handleSelectEmojiReaction(emoji);
+          addRecentSticker(emoji);
+        }}
       />
     </motion.article>
   );

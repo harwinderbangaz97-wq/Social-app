@@ -701,6 +701,10 @@ export const normalizeUser = (u: any): User => {
     isVerified: Boolean(u.isVerified),
     isFollowing: Boolean(u.isFollowing),
     isOnline: Boolean(u.isOnline),
+    role: u.role || 'user',
+    status: u.status || 'active',
+    registrationDate: u.registrationDate || '',
+    authProvider: u.authProvider || 'Email',
   };
 };
 
@@ -1145,6 +1149,39 @@ export const getUserProfileFromFirestore = async (userId: string): Promise<User 
     return null;
   } catch (error) {
     console.warn('Firestore read user profile fallback:', error);
+    return null;
+  }
+};
+
+export const checkUsernameAvailability = async (username: string): Promise<boolean> => {
+  try {
+    if (!username) return false;
+    const cleanUsername = username.toLowerCase().trim();
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('username', '==', cleanUsername), limit(1));
+    const snap = await getDocs(q);
+    return snap.empty;
+  } catch (err) {
+    console.error('Error checking username availability:', err);
+    return true;
+  }
+};
+
+export const getUsernameByEmail = async (email: string): Promise<string | null> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!email) return null;
+    const cleanEmail = email.toLowerCase().trim();
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', cleanEmail), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const data = snap.docs[0].data();
+      return data.username || null;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error getting username by email:', err);
     return null;
   }
 };
@@ -1761,5 +1798,94 @@ export const syncBugReportToFirestore = async (report: BugReportItem): Promise<v
     }, { merge: true });
   } catch (error) {
     console.warn('Firestore bug report sync fallback to local:', error);
+  }
+};
+
+// ==========================================
+// Admin Panel Management Helpers
+// ==========================================
+
+export const subscribeToUniversalReports = (callback: (reports: any[]) => void): (() => void) => {
+  try {
+    const reportsRef = collection(db, 'universal_reports');
+    const q = query(reportsRef, orderBy('syncedAt', 'desc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const reports: any[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            reports.push({ ...docSnap.data(), id: docSnap.id });
+          }
+        });
+        callback(reports);
+      },
+      (error) => {
+        console.warn('Universal reports snapshot error:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to universal reports:', err);
+    return () => {};
+  }
+};
+
+export const updateUserInFirestore = async (userId: string, data: Partial<User>): Promise<void> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!userId) return;
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, data, { merge: true });
+  } catch (error) {
+    console.warn('Failed to update user in Firestore:', error);
+  }
+};
+
+export const deleteUserFromFirestore = async (userId: string): Promise<void> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!userId) return;
+    const userRef = doc(db, 'users', userId);
+    await deleteDoc(userRef);
+  } catch (error) {
+    console.warn('Failed to delete user from Firestore:', error);
+  }
+};
+
+export const deleteUniversalReportFromFirestore = async (reportId: string): Promise<void> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!reportId) return;
+    const reportRef = doc(db, 'universal_reports', reportId);
+    await deleteDoc(reportRef);
+  } catch (error) {
+    console.warn('Failed to delete report from Firestore:', error);
+  }
+};
+
+export const subscribeToAllPosts = (callback: (posts: Post[]) => void): (() => void) => {
+  try {
+    const postsRef = collection(db, 'posts');
+    const q = query(postsRef, orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const postsList: Post[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            postsList.push(normalizePost({ ...docSnap.data(), id: docSnap.id }));
+          }
+        });
+        callback(postsList);
+      },
+      (error) => {
+        console.warn('All posts listener subscription warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to all posts:', err);
+    return () => {};
   }
 };

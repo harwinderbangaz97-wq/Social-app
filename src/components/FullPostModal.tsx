@@ -13,11 +13,14 @@ import {
   MessageCircle,
   X,
   SmilePlus,
+  Plus,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, User } from '../types';
 import { UniversalReportModal } from './UniversalReportModal';
 import { EmojiPickerPopup } from './EmojiPickerPopup';
+import { StickerPickerModal } from './StickerPickerModal';
+import { getRecentStickers, addRecentSticker } from '../utils/stickerUtils';
 
 interface FullPostModalProps {
   post: Post | null;
@@ -56,6 +59,9 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
 }) => {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showQuickReaction, setShowQuickReaction] = useState(false);
+  const [showStickerModal, setShowStickerModal] = useState(false);
+  const [recentStickers, setRecentStickers] = useState<string[]>([]);
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isEditingCaption, setIsEditingCaption] = useState(false);
@@ -63,6 +69,7 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
   const [isSaved, setIsSaved] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const quickReactionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (post) {
@@ -84,6 +91,26 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showOptionsMenu]);
+
+  // Load recent stickers on mount or state change
+  useEffect(() => {
+    setRecentStickers(getRecentStickers());
+  }, [showQuickReaction, showStickerModal]);
+
+  // Close quick reaction on click outside
+  useEffect(() => {
+    const handleQuickReactionOutside = (e: MouseEvent) => {
+      if (quickReactionRef.current && !quickReactionRef.current.contains(e.target as Node)) {
+        setShowQuickReaction(false);
+      }
+    };
+    if (showQuickReaction) {
+      document.addEventListener('mousedown', handleQuickReactionOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleQuickReactionOutside);
+    };
+  }, [showQuickReaction]);
 
   if (!isOpen || !post) return null;
 
@@ -375,35 +402,69 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
                   </button>
                 )}
 
-                {/* Emoji Reaction Trigger */}
-                <div className="relative">
+                {/* Emoji Reaction Trigger with 7 Stickers Quick Bar */}
+                <div className="relative" ref={quickReactionRef}>
                   <button
                     type="button"
-                    onClick={() => setShowEmojiPicker((prev) => !prev)}
+                    onClick={() => setShowQuickReaction((prev) => !prev)}
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-full transition cursor-pointer ${
                       post.userEmojiReaction
-                        ? 'bg-blue-500/30 text-blue-300 border border-blue-400/40'
+                        ? 'bg-blue-500/30 text-blue-300 border border-[#5B9DFF]/40'
                         : 'bg-white/10 hover:bg-white/25 text-white'
                     }`}
-                    title="React with emoji"
+                    title="React with sticker"
                   >
                     <SmilePlus className="w-3.5 h-3.5" />
                     <span>{post.userEmojiReaction || 'React'}</span>
                   </button>
                   <AnimatePresence>
-                    {showEmojiPicker && (
-                      <EmojiPickerPopup
-                        selectedEmoji={post.userEmojiReaction || null}
-                        onSelectEmoji={(emoji) => {
-                          if (onEmojiReact) {
-                            onEmojiReact(post.id, emoji);
-                          }
-                          setShowEmojiPicker(false);
-                        }}
-                        onClose={() => setShowEmojiPicker(false)}
-                        align="right"
-                        position="top"
-                      />
+                    {showQuickReaction && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8, y: -45 }}
+                        animate={{ opacity: 1, scale: 1, y: -45 }}
+                        exit={{ opacity: 0, scale: 0.8, y: -45 }}
+                        transition={{ duration: 0.15, ease: 'easeOut' }}
+                        className="absolute bottom-full left-0 z-40 flex items-center gap-1 bg-white px-2 py-1 rounded-full border border-slate-200 shadow-lg mb-2 whitespace-nowrap"
+                      >
+                        {recentStickers.map((sticker) => {
+                          const isSelected = post.userEmojiReaction === sticker;
+                          return (
+                            <motion.button
+                              key={sticker}
+                              whileHover={{ scale: 1.25 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onEmojiReact) {
+                                  onEmojiReact(post.id, sticker);
+                                }
+                                addRecentSticker(sticker);
+                                setShowQuickReaction(false);
+                              }}
+                              className={`w-7.5 h-7.5 rounded-full flex items-center justify-center text-base hover:bg-slate-100 transition-all cursor-pointer relative ${
+                                isSelected ? 'bg-blue-100/90 ring-1 ring-[#5B9DFF]' : ''
+                              }`}
+                              title={`React with ${sticker}`}
+                            >
+                              <span>{sticker}</span>
+                            </motion.button>
+                          );
+                        })}
+                        {/* Plus button at the end of the bar */}
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowQuickReaction(false);
+                            setShowStickerModal(true);
+                          }}
+                          className="w-7.5 h-7.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer transition-colors"
+                          title="More stickers..."
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </motion.button>
+                      </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
@@ -565,6 +626,17 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
               </motion.div>
             </div>
           )}
+          {/* 7 Sticker Picker Modal */}
+          <StickerPickerModal
+            isOpen={showStickerModal}
+            onClose={() => setShowStickerModal(false)}
+            onSelectSticker={(emoji) => {
+              if (onEmojiReact) {
+                onEmojiReact(post.id, emoji);
+              }
+              addRecentSticker(emoji);
+            }}
+          />
         </AnimatePresence>
       </motion.div>
     </AnimatePresence>

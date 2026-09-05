@@ -44,6 +44,10 @@ export interface User {
   isVerified?: boolean;
   isFollowing?: boolean;
   isOnline?: boolean;
+  role?: 'admin' | 'user';
+  status?: 'active' | 'suspended';
+  registrationDate?: string;
+  authProvider?: string;
 }
 
 export interface Story {
