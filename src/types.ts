@@ -52,6 +52,7 @@ export interface Story {
   user: User;
   mediaUrl: string;
   timestamp: string;
+  createdAtMs?: number;
   isSeen: boolean;
   caption?: string;
   likesCount?: number;
@@ -66,6 +67,7 @@ export interface Comment {
   user: User;
   text: string;
   timestamp: string;
+  createdAtMs?: number;
   likesCount: number;
   isLiked?: boolean;
 }
@@ -191,6 +193,7 @@ export interface NotificationItem {
   user: User;
   text: string;
   timestamp: string;
+  createdAtMs?: number;
   read: boolean;
   postId?: string;
   chatUserId?: string;

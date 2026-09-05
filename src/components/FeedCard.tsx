@@ -26,6 +26,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Post, User } from '../types';
 import { UniversalReportModal } from './UniversalReportModal';
 import { useTranslation } from '../context/LanguageContext';
+import { formatRelativeTime, formatDetailed12HourTime } from '../services/timeUtils';
 
 interface FeedCardProps {
   post: Post;
@@ -319,9 +320,9 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
         className="w-full bg-white rounded-[24px] border border-slate-100/90 shadow-[0_2px_14px_rgba(0,0,0,0.05)] overflow-hidden transition-all group"
       >
         {/* Author Header */}
-        <div className="px-4 pt-3.5 pb-2.5 flex items-center justify-between">
+        <div className="px-4 pt-3.5 pb-2.5 flex items-center justify-between gap-3">
           <div
-            className="flex items-center gap-3 cursor-pointer group/user"
+            className="flex items-center gap-3 cursor-pointer group/user min-w-0 flex-1"
             onClick={(e) => {
               e.stopPropagation();
               if (onUserClick) onUserClick(postAuthor);
@@ -339,34 +340,33 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
             </div>
 
             {/* Username and details */}
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-[15.5px] text-slate-900 tracking-tight group-hover/user:text-[#5B9DFF] transition-colors font-['Outfit']">
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="font-bold text-[15.5px] text-slate-900 tracking-tight group-hover/user:text-[#5B9DFF] transition-colors font-['Outfit'] truncate">
                   {postAuthor.name}
                 </span>
                 {postAuthor.isVerified && (
-                  <CheckCircle2 className="w-4.5 h-4.5 text-[#5B9DFF] fill-[#5B9DFF]/20" />
+                  <CheckCircle2 className="w-4.5 h-4.5 text-[#5B9DFF] fill-[#5B9DFF]/20 flex-shrink-0" />
                 )}
               </div>
-              <div className="flex items-center gap-1.5 text-[13px] text-slate-500">
-                <span>@{postAuthor.username}</span>
+              <div className="flex items-center gap-1.5 text-[13px] text-slate-500 min-w-0">
+                <span className="truncate">@{postAuthor.username}</span>
                 {post.location && (
-                  <div className="relative inline-flex items-center">
-                    <span className="text-slate-300 mr-1">•</span>
+                  <div className="relative inline-flex items-center flex-shrink-0">
+                    <span className="text-slate-300">•</span>
                     <motion.button
                       type="button"
-                      whileHover={{ scale: 1.06 }}
+                      whileHover={{ scale: 1.15 }}
                       whileTap={{ scale: 0.9 }}
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowLocation(!showLocation);
                       }}
-                      title="Tap to view location"
-                      aria-label="View post location"
-                      className="inline-flex items-center gap-1 text-slate-500 hover:text-[#5B9DFF] transition-colors"
+                      title={`Location: ${post.location}`}
+                      aria-label={`View location: ${post.location}`}
+                      className="inline-flex items-center p-0.5 text-slate-400 hover:text-[#5B9DFF] transition-colors cursor-pointer"
                     >
                       <MapPin className="w-3.5 h-3.5 text-[#5B9DFF]" />
-                      <span className="truncate max-w-[130px]">{post.location}</span>
                     </motion.button>
 
                     {/* Full Location Popover on Tap */}
@@ -388,7 +388,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                               e.stopPropagation();
                               setShowLocation(false);
                             }}
-                            className="ml-1 w-4.5 h-4.5 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white/80 hover:text-white transition"
+                            className="ml-1 w-4.5 h-4.5 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white/80 hover:text-white transition cursor-pointer"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -403,12 +403,15 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
 
           {/* Time on right & options */}
           <div
-            className="flex items-center gap-2 relative"
+            className="flex items-center gap-2 flex-shrink-0 relative"
             ref={menuRef}
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="text-[12.5px] font-medium text-slate-400 tracking-tight">
-              {post.timestamp}
+            <span
+              className="text-[12.5px] font-medium text-slate-400 tracking-tight whitespace-nowrap"
+              title={formatDetailed12HourTime(post.createdAtMs || post.timestamp)}
+            >
+              {formatRelativeTime(post.createdAtMs || post.timestamp)}
             </span>
             <motion.button
               type="button"

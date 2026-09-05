@@ -77,6 +77,7 @@ import {
   addChatMessageToFirestore,
   createOrEnsureChatDocument,
 } from '../services/chatService';
+import { parseTimestampToMs, format12HourTime, formatRelativeTime } from '../services/timeUtils';
 
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
 export const MORE_REACTIONS = [
@@ -298,7 +299,7 @@ const MessageBubbleItem: React.FC<{
 
       {/* Timestamp, Seen Status, and Quick Options Button */}
       <div className="flex items-center gap-1.5 mt-1 px-1 text-[10px] text-slate-500 font-semibold drop-shadow-xs">
-        <span className="bg-white/70 backdrop-blur-xs px-1.5 py-0.2 rounded-md">{msg.timestamp}</span>
+        <span className="bg-white/70 backdrop-blur-xs px-1.5 py-0.2 rounded-md">{format12HourTime(msg.createdAt || msg.timestamp)}</span>
         {isMyMessage && (
           <span title={msg.isRead ? 'Seen by recipient' : (msg.isDelivered ? 'Delivered' : 'Sent')}>
             {msg.isRead || msg.isDelivered ? (
@@ -923,19 +924,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
       (snapshot) => {
         const msgs: Message[] = snapshot.docs.map((docSnap) => {
           const data = docSnap.data({ serverTimestamps: 'estimate' });
-          let createdAtMs = Date.now();
-          if (data.createdAt?.toMillis && typeof data.createdAt.toMillis === 'function') {
-            createdAtMs = data.createdAt.toMillis();
-          } else if (typeof data.createdAt === 'number') {
-            createdAtMs = data.createdAt;
-          }
-
-          let timestampStr = 'Just now';
-          if (data.createdAt?.toDate && typeof data.createdAt.toDate === 'function') {
-            timestampStr = data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          } else if (data.timestamp) {
-            timestampStr = data.timestamp;
-          }
+          const createdAtMs = parseTimestampToMs(data.createdAt || data.timestamp || docSnap.id);
+          const timestampStr = format12HourTime(data.createdAt || data.timestamp || createdAtMs);
 
           return {
             id: docSnap.id,
@@ -1104,7 +1094,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             text: summaryText,
             isVoice: true,
             voiceDuration: voiceData.durationSeconds,
-            timestamp: 'Just now',
+            timestamp: format12HourTime(Date.now()),
             isRead: false,
             senderId: senderUid,
           },
@@ -1180,7 +1170,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           lastMessage: {
             text: summaryText,
             imageUrl: finalImageUrl || null,
-            timestamp: 'Just now',
+            timestamp: format12HourTime(Date.now()),
             isRead: false,
             senderId: senderUid,
           },
@@ -2694,7 +2684,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         )}
                       </div>
                       <span className="text-[10px] text-slate-400 font-medium flex-shrink-0 ml-1">
-                        {thread.lastMessage?.timestamp || ''}
+                        {thread.lastMessage?.timestamp ? format12HourTime(thread.lastMessage.timestamp) : ''}
                       </span>
                     </div>
                     <div

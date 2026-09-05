@@ -3,6 +3,7 @@ import { X, Send, Heart, CheckCircle2, MoreHorizontal, Flag } from 'lucide-react
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, User, Comment } from '../types';
 import { UniversalReportModal } from './UniversalReportModal';
+import { formatRelativeTime, formatDetailed12HourTime } from '../services/timeUtils';
 
 interface CommentsModalProps {
   post: Post | null;
@@ -116,7 +117,12 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                 {postAuthor.name}
               </span>
               <span className="text-slate-700">{post.caption}</span>
-              <div className="text-[11px] text-slate-400 mt-1">{post.timestamp}</div>
+              <div
+                className="text-[11px] text-slate-400 mt-1"
+                title={formatDetailed12HourTime(post.createdAtMs || post.timestamp)}
+              >
+                {formatRelativeTime(post.createdAtMs || post.timestamp)}
+              </div>
             </div>
           </div>
 
@@ -168,8 +174,11 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                           {commentUser.isVerified && (
                             <CheckCircle2 className="w-3.5 h-3.5 text-[#5B9DFF] fill-[#5B9DFF]/20" />
                           )}
-                          <span className="text-[10px] text-slate-400 ml-1">
-                            {comment.timestamp}
+                          <span
+                            className="text-[10px] text-slate-400 ml-1"
+                            title={formatDetailed12HourTime((comment as any).createdAtMs || comment.timestamp)}
+                          >
+                            {formatRelativeTime((comment as any).createdAtMs || comment.timestamp)}
                           </span>
                         </div>
                         <p className="text-[13px] text-slate-700 mt-0.5 leading-relaxed">

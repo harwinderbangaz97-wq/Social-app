@@ -91,6 +91,12 @@ import {
   markMessageAsReadInFirestore,
   subscribeToAllChatRooms,
 } from './services/chatService';
+import {
+  parseTimestampToMs,
+  formatRelativeTime,
+  format12HourTime,
+  formatDetailed12HourTime,
+} from './services/timeUtils';
 
 const HomeTab = lazy(() => import('./components/tabs/HomeTab').then(m => ({ default: m.HomeTab })));
 const SearchTab = lazy(() => import('./components/tabs/SearchTab').then(m => ({ default: m.SearchTab })));
@@ -774,7 +780,7 @@ function AppContent() {
           isFollowing: false,
         },
         text: 'Your post received more Dislikes than Likes. To protect privacy and maintain a safe community, we are removing this post from the Funshann platform.',
-        timestamp: 'Just now',
+        timestamp: formatRelativeTime(Date.now()),
         read: false,
         previewImage: removedPost.imageUrl,
       };
@@ -790,12 +796,14 @@ function AppContent() {
 
   // Add Comment to Post
   const handleAddComment = (postId: string, text: string) => {
+    const now = Date.now();
     const newComment = {
-      id: `c_${Date.now()}`,
+      id: `c_${now}`,
       userId: currentUser.id,
       user: currentUser,
       text,
-      timestamp: 'Just now',
+      timestamp: formatRelativeTime(now),
+      createdAtMs: now,
       likesCount: 0,
       isLiked: false,
     };
@@ -886,7 +894,7 @@ function AppContent() {
     const createdPost: Post = {
       ...newPostData,
       id: postId,
-      timestamp: new Date().toISOString(),
+      timestamp: formatRelativeTime(now),
       createdAtMs: now,
       likesCount: 0,
       dislikesCount: 0,
@@ -987,7 +995,7 @@ function AppContent() {
         participantIds: [currentUid, targetUid].sort(),
         lastMessage: {
           text: 'Say hello!',
-          timestamp: 'Just now',
+          timestamp: format12HourTime(Date.now()),
           isRead: true,
           senderId: currentUid,
         },
@@ -1023,7 +1031,7 @@ function AppContent() {
       participantIds: allGroupMembers.map(m => m.uid || m.id),
       lastMessage: {
         text: 'Group created. Say hello! 👋',
-        timestamp: 'Just now',
+        timestamp: format12HourTime(Date.now()),
         isRead: true,
         senderId: currentUid,
         senderName: currentUser.name,
@@ -1146,7 +1154,7 @@ function AppContent() {
         imageUrl,
         isVoice: !!voiceNote,
         voiceDuration: voiceNote?.durationSeconds,
-        timestamp: 'Just now',
+        timestamp: format12HourTime(Date.now()),
         isRead: false,
         senderId: currentUid,
       };
@@ -1446,7 +1454,7 @@ function AppContent() {
             messages: [],
             lastMessage: {
               text: 'Chat cleared',
-              timestamp: 'Just now',
+              timestamp: format12HourTime(Date.now()),
               isRead: true,
               senderId: currentUser.uid || currentUser.id,
             },
@@ -1537,12 +1545,14 @@ function AppContent() {
       targetStory.userId !== currentUser.id &&
       targetStory.user?.id !== currentUser.id
     ) {
+      const now = Date.now();
       const notif: NotificationItem = {
-        id: `notif_story_like_${Date.now()}`,
+        id: `notif_story_like_${now}`,
         type: 'story_like',
         user: currentUser,
         text: 'liked your story ❤️',
-        timestamp: 'Just now',
+        timestamp: formatRelativeTime(now),
+        createdAtMs: now,
         read: false,
         previewImage: targetStory.mediaUrl,
       };

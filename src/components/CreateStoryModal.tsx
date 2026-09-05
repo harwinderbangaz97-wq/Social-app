@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Story } from '../types';
 import { usePermissionAndMedia } from '../context/PermissionAndMediaContext';
+import { formatRelativeTime } from '../services/timeUtils';
 
 interface CreateStoryModalProps {
   isOpen: boolean;
@@ -82,12 +83,14 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
     setIsPublishing(true);
 
+    const now = Date.now();
     const newStory: Story = {
-      id: `story_${Date.now()}`,
+      id: `story_${now}`,
       userId: currentUser.id,
       user: currentUser,
       mediaUrl: selectedMedia,
-      timestamp: 'Just now',
+      timestamp: formatRelativeTime(now),
+      createdAtMs: now,
       isSeen: false,
       caption: caption.trim() || undefined,
       likesCount: 0,

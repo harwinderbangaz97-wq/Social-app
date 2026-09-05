@@ -18,6 +18,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationItem, User } from '../types';
 import { useTranslation } from '../context/LanguageContext';
+import { formatRelativeTime, formatDetailed12HourTime } from '../services/timeUtils';
 
 interface NotificationDrawerProps {
   notifications: NotificationItem[];
@@ -154,8 +155,11 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                             <span className="text-slate-600">{notif.text}</span>
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-slate-400 font-medium">
-                              {notif.timestamp}
+                            <span
+                              className="text-[10px] text-slate-400 font-medium"
+                              title={formatDetailed12HourTime(notif.createdAtMs || notif.timestamp)}
+                            >
+                              {formatRelativeTime(notif.createdAtMs || notif.timestamp)}
                             </span>
                             {!notif.read && (
                               <span className="w-1.5 h-1.5 rounded-full bg-[#5B9DFF] ring-2 ring-blue-100" />

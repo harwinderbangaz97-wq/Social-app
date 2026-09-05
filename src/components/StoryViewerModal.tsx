@@ -14,6 +14,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Story, User } from '../types';
 import { useTranslation } from '../context/LanguageContext';
+import { formatRelativeTime, formatDetailed12HourTime } from '../services/timeUtils';
 
 interface FloatingHeart {
   id: number;
@@ -351,8 +352,11 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                       <CheckCircle2 className="w-3.5 h-3.5 text-[#5B9DFF] fill-white" />
                     )}
                   </div>
-                  <span className="text-xs text-white/70">
-                    {currentStory.timestamp}
+                  <span
+                    className="text-xs text-white/70"
+                    title={formatDetailed12HourTime(currentStory.createdAtMs || currentStory.timestamp)}
+                  >
+                    {formatRelativeTime(currentStory.createdAtMs || currentStory.timestamp)}
                   </span>
                 </div>
               </div>

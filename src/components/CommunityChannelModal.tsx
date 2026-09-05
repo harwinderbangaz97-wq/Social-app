@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { User, VoiceNoteData } from '../types';
 import { syncCommunityToFirestore } from '../services/firebase';
+import { format12HourTime } from '../services/timeUtils';
 
 export interface CommunityMessage {
   id: string;
@@ -194,7 +195,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
       id: Date.now().toString(),
       senderName: 'System Announcement',
       text: `🎉 ${cleanName} was added to ${community.name} as ${roleToAdd}! Welcome to the community!`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: format12HourTime(Date.now()),
       reactions: [{ emoji: '👋', count: 3, reacted: false }],
     };
     setMessages((prev) => [...prev, systemMsg]);
@@ -344,7 +345,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
       senderName: isOwner ? `${community.adminName} (You)` : 'You',
       senderRole: isOwner ? 'Owner' : 'Member',
       audioDuration: durationStr,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: format12HourTime(Date.now()),
       isMe: true,
       reactions: [],
     };
@@ -422,7 +423,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
               url: attachedMedia.url,
             }
           : undefined,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: format12HourTime(Date.now()),
       isMe: true,
       reactions: [],
     };
@@ -960,7 +961,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                             isMe ? 'text-blue-100' : 'text-slate-400'
                           }`}
                         >
-                          <span>{m.timestamp}</span>
+                          <span>{format12HourTime(m.timestamp)}</span>
                           {isMe && <CheckCheck className="w-3.5 h-3.5 text-white" />}
                         </div>
                       </div>

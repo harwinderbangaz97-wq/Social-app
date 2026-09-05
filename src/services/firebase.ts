@@ -41,6 +41,8 @@ import {
   serverTimestamp,
   Unsubscribe,
   addDoc,
+  enableNetwork,
+  disableNetwork,
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -53,6 +55,7 @@ import {
 import firebaseAppletConfig from '../../firebase-applet-config.json';
 import { User, Post, Story, ChatThread, Message, NotificationItem, UserReportItem, BugReportItem } from '../types';
 import { UniversalReportItem } from '../types/safety';
+import { parseTimestampToMs, formatRelativeTime, format12HourTime, formatDetailed12HourTime } from './timeUtils';
 
 // Exact live Firebase Configuration
 export const firebaseConfig = {
@@ -133,6 +136,120 @@ export const getStorageClient = () => {
   }
   return storageClient;
 };
+
+// ==========================================
+// Network Resilience & Auto-Reconnect Engine
+// ==========================================
+let reconnectDebounceTimer: any = null;
+
+/**
+ * Reconnects Firestore network gracefully after a network change or connectivity drop.
+ */
+export const reconnectFirestore = async (): Promise<void> => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (reconnectDebounceTimer) clearTimeout(reconnectDebounceTimer);
+    reconnectDebounceTimer = setTimeout(async () => {
+      try {
+        await enableNetwork(db);
+      } catch {
+        // Silent recovery fallback
+      }
+    }, 400);
+  } catch {
+    // ignore
+  }
+};
+
+// Listen to browser network changes, focus, and prevent uncaught network change errors
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    reconnectFirestore();
+  });
+
+  window.addEventListener('offline', () => {
+    // Firestore's persistent local cache will seamlessly handle queries in offline mode
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      reconnectFirestore();
+    }
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const errorMsg = event.reason?.message || String(event.reason || '');
+    if (
+      errorMsg.includes('Failed to fetch') ||
+      errorMsg.includes('network change') ||
+      errorMsg.includes('ERR_NETWORK_CHANGED') ||
+      errorMsg.includes('NetworkError') ||
+      errorMsg.includes('transport errored') ||
+      errorMsg.includes('offline') ||
+      errorMsg.includes('unavailable')
+    ) {
+      event.preventDefault();
+      reconnectFirestore();
+    }
+  });
+}
+
+/**
+ * Wraps a Firestore snapshot subscription in a self-healing resilience loop.
+ * If network disconnects or changes, it recovers automatically without crashing.
+ */
+export function createResilientSubscription(
+  subscribeFn: () => Unsubscribe
+): Unsubscribe {
+  let isUnsubscribed = false;
+  let activeUnsubscribe: Unsubscribe | null = null;
+  let retryTimer: any = null;
+
+  const startSubscription = () => {
+    if (isUnsubscribed) return;
+    try {
+      if (activeUnsubscribe) {
+        try {
+          activeUnsubscribe();
+        } catch {
+          // ignore
+        }
+      }
+      activeUnsubscribe = subscribeFn();
+    } catch {
+      if (!isUnsubscribed) {
+        retryTimer = setTimeout(startSubscription, 2500);
+      }
+    }
+  };
+
+  startSubscription();
+
+  const handleNetworkRecovery = () => {
+    if (isUnsubscribed) return;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(startSubscription, 300);
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', handleNetworkRecovery);
+  }
+
+  return () => {
+    isUnsubscribed = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', handleNetworkRecovery);
+    }
+    if (activeUnsubscribe) {
+      try {
+        activeUnsubscribe();
+      } catch {
+        // ignore
+      }
+    }
+  };
+}
 
 // Keep an authenticated session active and resolve instantly if available
 export const ensureFirebaseAuth = async (): Promise<FirebaseUser | null> => {
@@ -693,31 +810,26 @@ export const normalizePost = (raw: any): Post => {
     }
   );
 
-  const comments = Array.isArray(raw?.comments)
-    ? raw.comments.map((c: any) => ({
-        id: c?.id || String(Date.now()),
-        userId: c?.userId || 'user',
-        user: normalizeUser(c?.user || { id: c?.userId }),
-        text: c?.text || '',
-        timestamp: c?.timestamp || 'Just now',
-        likesCount: typeof c?.likesCount === 'number' ? c.likesCount : 0,
-        isLiked: Boolean(c?.isLiked),
-      }))
-    : [];
-
   const rawId = String(raw?.id || `post_${Date.now()}`);
-  let createdAtMs: number = typeof raw?.createdAtMs === 'number' ? raw.createdAtMs : 0;
-  if (!createdAtMs) {
-    if (rawId.startsWith('post_')) {
-      const parsed = parseInt(rawId.replace('post_', ''), 10);
-      if (!isNaN(parsed) && parsed > 1000000000) {
-        createdAtMs = parsed;
-      }
-    }
-  }
-  if (!createdAtMs) {
-    createdAtMs = Date.now();
-  }
+  const createdAtMs = parseTimestampToMs(
+    raw?.createdAt || raw?.createdAtMs || raw?.timestamp || raw?.syncedAt || rawId
+  );
+
+  const comments = Array.isArray(raw?.comments)
+    ? raw.comments.map((c: any) => {
+        const cMs = parseTimestampToMs(c?.createdAt || c?.createdAtMs || c?.timestamp || c?.id);
+        return {
+          id: c?.id || String(Date.now()),
+          userId: c?.userId || 'user',
+          user: normalizeUser(c?.user || { id: c?.userId }),
+          text: c?.text || '',
+          timestamp: formatRelativeTime(cMs),
+          createdAtMs: cMs,
+          likesCount: typeof c?.likesCount === 'number' ? c.likesCount : 0,
+          isLiked: Boolean(c?.isLiked),
+        };
+      })
+    : [];
 
   return {
     id: rawId,
@@ -725,7 +837,7 @@ export const normalizePost = (raw: any): Post => {
     user,
     imageUrl: raw?.imageUrl || raw?.mediaUrl || '',
     caption: raw?.caption || '',
-    timestamp: raw?.timestamp || 'Just now',
+    timestamp: formatRelativeTime(createdAtMs),
     createdAtMs,
     likesCount: typeof raw?.likesCount === 'number' ? raw.likesCount : 0,
     dislikesCount: typeof raw?.dislikesCount === 'number' ? raw.dislikesCount : 0,
@@ -745,12 +857,14 @@ export const normalizePost = (raw: any): Post => {
 
 export const normalizeStory = (raw: any): Story => {
   const user = normalizeUser(raw?.user || { id: raw?.userId });
+  const storyMs = parseTimestampToMs(raw?.createdAt || raw?.createdAtMs || raw?.timestamp || raw?.id);
   return {
     id: raw?.id || String(Date.now()),
     userId: raw?.userId || user.id,
     user,
     mediaUrl: raw?.mediaUrl || raw?.imageUrl || '',
-    timestamp: raw?.timestamp || 'Just now',
+    timestamp: formatRelativeTime(storyMs),
+    createdAtMs: storyMs,
     isSeen: Boolean(raw?.isSeen),
     caption: raw?.caption || '',
     likesCount: typeof raw?.likesCount === 'number' ? raw.likesCount : 0,
@@ -768,6 +882,11 @@ export const normalizeChatThread = (raw: any): ChatThread => {
     : [];
   const messages = Array.isArray(raw?.messages) ? raw.messages : [];
 
+  const rawLastMsg = raw?.lastMessage || (messages.length > 0 ? messages[messages.length - 1] : null);
+  const lastMsgTime = rawLastMsg
+    ? format12HourTime(rawLastMsg.createdAt || rawLastMsg.createdAtMs || rawLastMsg.timestamp || Date.now())
+    : format12HourTime(Date.now());
+
   return {
     id: raw?.id || String(Date.now()),
     participant,
@@ -776,23 +895,21 @@ export const normalizeChatThread = (raw: any): ChatThread => {
     groupAvatar: raw?.groupAvatar,
     groupDescription: raw?.groupDescription,
     groupMembers,
-    lastMessage:
-      raw?.lastMessage ||
-      (messages.length > 0
-        ? {
-            text: messages[messages.length - 1].text || '',
-            imageUrl: messages[messages.length - 1].imageUrl,
-            isVoice: Boolean(messages[messages.length - 1].voiceNote),
-            timestamp: messages[messages.length - 1].timestamp || 'Just now',
-            isRead: Boolean(messages[messages.length - 1].isRead),
-            senderId: messages[messages.length - 1].senderId || '',
-          }
-        : {
-            text: '',
-            timestamp: 'Just now',
-            isRead: true,
-            senderId: '',
-          }),
+    lastMessage: rawLastMsg
+      ? {
+          text: rawLastMsg.text || '',
+          imageUrl: rawLastMsg.imageUrl,
+          isVoice: Boolean(rawLastMsg.isVoice || rawLastMsg.voiceNote),
+          timestamp: lastMsgTime,
+          isRead: Boolean(rawLastMsg.isRead),
+          senderId: rawLastMsg.senderId || '',
+        }
+      : {
+          text: '',
+          timestamp: lastMsgTime,
+          isRead: true,
+          senderId: '',
+        },
     unreadCount: typeof raw?.unreadCount === 'number' ? raw.unreadCount : 0,
     messages,
   };
@@ -800,12 +917,14 @@ export const normalizeChatThread = (raw: any): ChatThread => {
 
 export const normalizeNotification = (raw: any): NotificationItem => {
   const user = normalizeUser(raw?.user);
+  const notifMs = parseTimestampToMs(raw?.createdAt || raw?.createdAtMs || raw?.timestamp || raw?.id);
   return {
     id: raw?.id || String(Date.now()),
     user,
     type: raw?.type || 'like',
     text: raw?.text || raw?.content || '',
-    timestamp: raw?.timestamp || 'Just now',
+    timestamp: formatRelativeTime(notifMs),
+    createdAtMs: notifMs,
     read: typeof raw?.read === 'boolean' ? raw.read : Boolean(raw?.isRead),
     postId: raw?.postId,
     previewImage: raw?.previewImage,
@@ -937,10 +1056,10 @@ export const getUserProfileFromFirestore = async (userId: string): Promise<User 
 };
 
 export const subscribeToUsers = (callback: (users: User[]) => void, limitCount = 30): (() => void) => {
-  try {
+  return createResilientSubscription(() => {
     const usersRef = collection(db, 'users');
     const q = query(usersRef, limit(limitCount));
-    const unsubscribe = onSnapshot(
+    return onSnapshot(
       q,
       (snapshot) => {
         const map = new Map<string, User>();
@@ -955,14 +1074,11 @@ export const subscribeToUsers = (callback: (users: User[]) => void, limitCount =
         callback(Array.from(map.values()));
       },
       (error) => {
-        console.warn('Users real-time listener warning:', error);
+        console.warn('Users real-time listener reconnecting silently:', error?.message || error);
+        reconnectFirestore();
       }
     );
-    return unsubscribe;
-  } catch (err) {
-    console.warn('Failed to subscribe to users:', err);
-    return () => {};
-  }
+  });
 };
 
 export const getUsersFromFirestore = async (limitCount = 30): Promise<User[]> => {
@@ -994,9 +1110,12 @@ export const syncPostToFirestore = async (post: Post): Promise<void> => {
     if (!post || !post.id) return;
     const postRef = doc(db, 'posts', post.id);
     const userId = post.userId || post.user?.id || 'user';
-    const createdAtMs =
+    const createdAtMs = parseTimestampToMs(
       post.createdAtMs ||
-      (post.id.startsWith('post_') ? parseInt(post.id.replace('post_', ''), 10) || Date.now() : Date.now());
+      (post as any).createdAt ||
+      post.timestamp ||
+      (post.id.startsWith('post_') ? parseInt(post.id.replace('post_', ''), 10) : null)
+    );
 
     await setDoc(
       postRef,
@@ -1013,8 +1132,9 @@ export const syncPostToFirestore = async (post: Post): Promise<void> => {
         imageUrl: post.imageUrl || '',
         caption: post.caption || '',
         location: post.location || '',
-        timestamp: post.timestamp || 'Just now',
+        timestamp: formatRelativeTime(createdAtMs),
         createdAtMs,
+        createdAt: serverTimestamp(),
         likesCount: typeof post.likesCount === 'number' ? post.likesCount : 0,
         dislikesCount: typeof post.dislikesCount === 'number' ? post.dislikesCount : 0,
         commentsCount:
@@ -1026,7 +1146,16 @@ export const syncPostToFirestore = async (post: Post): Promise<void> => {
         userReaction: post.userReaction || null,
         isSaved: Boolean(post.isSaved),
         isAutoRemoved: Boolean(post.isAutoRemoved),
-        comments: Array.isArray(post.comments) ? post.comments : [],
+        comments: Array.isArray(post.comments)
+          ? post.comments.map((c) => {
+              const cMs = parseTimestampToMs((c as any).createdAt || (c as any).createdAtMs || c.timestamp || c.id);
+              return {
+                ...c,
+                timestamp: formatRelativeTime(cMs),
+                createdAtMs: cMs,
+              };
+            })
+          : [],
         syncedAt: serverTimestamp(),
       },
       { merge: true }
@@ -1099,11 +1228,11 @@ export const loadMorePostsFromFirestore = async (limitCount = 15): Promise<Post[
 };
 
 export const subscribeToPosts = (callback: (posts: Post[]) => void, limitCount = 15): (() => void) => {
-  try {
+  return createResilientSubscription(() => {
     const postsRef = collection(db, 'posts');
     const q = query(postsRef, limit(limitCount));
     const localCache = new Map<string, Post>();
-    const unsubscribe = onSnapshot(
+    return onSnapshot(
       q,
       (snapshot) => {
         snapshot.forEach((docSnap) => {
@@ -1121,14 +1250,11 @@ export const subscribeToPosts = (callback: (posts: Post[]) => void, limitCount =
         callback(result);
       },
       (error) => {
-        console.warn('Posts real-time listener warning:', error);
+        console.warn('Posts real-time listener reconnecting silently:', error?.message || error);
+        reconnectFirestore();
       }
     );
-    return unsubscribe;
-  } catch (err) {
-    console.warn('Failed to subscribe to posts:', err);
-    return () => {};
-  }
+  });
 };
 
 // 3. Chat Threads & Direct Messages
@@ -1181,29 +1307,33 @@ export const syncChatMessageToFirestore = async (threadId: string, message: Omit
 };
 
 export const subscribeToChatMessages = (threadId: string, callback: (messages: Message[]) => void): (() => void) => {
-  try {
-    if (!threadId) return () => {};
+  if (!threadId) return () => {};
+  return createResilientSubscription(() => {
     const messagesRef = collection(db, 'chat_threads', threadId, 'messages');
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
-    const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
-      const msgs: Message[] = [];
-      snapshot.forEach((docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          msgs.push({ 
-            id: docSnap.id, 
-            ...data,
-            isDelivered: !docSnap.metadata.hasPendingWrites
-          } as Message);
-        }
-      });
-      callback(msgs);
-    });
-    return unsubscribe;
-  } catch (err) {
-    console.warn('Failed to subscribe to chat messages:', err);
-    return () => {};
-  }
+    return onSnapshot(
+      q,
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        const msgs: Message[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            msgs.push({ 
+              id: docSnap.id, 
+              ...data,
+              isDelivered: !docSnap.metadata.hasPendingWrites
+            } as Message);
+          }
+        });
+        callback(msgs);
+      },
+      (error) => {
+        console.warn('Chat messages real-time listener reconnecting silently:', error?.message || error);
+        reconnectFirestore();
+      }
+    );
+  });
 };
 
 export const getChatThreadsFromFirestore = async (limitCount = 25): Promise<ChatThread[]> => {
@@ -1226,10 +1356,10 @@ export const getChatThreadsFromFirestore = async (limitCount = 25): Promise<Chat
 };
 
 export const subscribeToChatThreads = (callback: (threads: ChatThread[]) => void, limitCount = 25): (() => void) => {
-  try {
+  return createResilientSubscription(() => {
     const threadsRef = collection(db, 'chat_threads');
     const q = query(threadsRef, limit(limitCount));
-    const unsubscribe = onSnapshot(
+    return onSnapshot(
       q,
       (snapshot) => {
         const result: ChatThread[] = [];
@@ -1243,14 +1373,11 @@ export const subscribeToChatThreads = (callback: (threads: ChatThread[]) => void
         }
       },
       (error) => {
-        console.warn('Chat threads real-time listener warning:', error);
+        console.warn('Chat threads real-time listener reconnecting silently:', error?.message || error);
+        reconnectFirestore();
       }
     );
-    return unsubscribe;
-  } catch (err) {
-    console.warn('Failed to subscribe to chat threads:', err);
-    return () => {};
-  }
+  });
 };
 
 // 4. Stories
@@ -1299,9 +1426,9 @@ export const getStoriesFromFirestore = async (): Promise<Story[]> => {
 };
 
 export const subscribeToStories = (callback: (stories: Story[]) => void): (() => void) => {
-  try {
+  return createResilientSubscription(() => {
     const storiesRef = collection(db, 'stories');
-    const unsubscribe = onSnapshot(
+    return onSnapshot(
       storiesRef,
       (snapshot) => {
         const result: Story[] = [];
@@ -1315,14 +1442,11 @@ export const subscribeToStories = (callback: (stories: Story[]) => void): (() =>
         }
       },
       (error) => {
-        console.warn('Stories real-time listener warning:', error);
+        console.warn('Stories real-time listener reconnecting silently:', error?.message || error);
+        reconnectFirestore();
       }
     );
-    return unsubscribe;
-  } catch (err) {
-    console.warn('Failed to subscribe to stories:', err);
-    return () => {};
-  }
+  });
 };
 
 // 5. Communities
@@ -1375,9 +1499,9 @@ export const getNotificationsFromFirestore = async (): Promise<NotificationItem[
 };
 
 export const subscribeToNotifications = (callback: (notifications: NotificationItem[]) => void): (() => void) => {
-  try {
+  return createResilientSubscription(() => {
     const notifsRef = collection(db, 'notifications');
-    const unsubscribe = onSnapshot(
+    return onSnapshot(
       notifsRef,
       (snapshot) => {
         const result: NotificationItem[] = [];
@@ -1391,14 +1515,11 @@ export const subscribeToNotifications = (callback: (notifications: NotificationI
         }
       },
       (error) => {
-        console.warn('Notifications real-time listener warning:', error);
+        console.warn('Notifications real-time listener reconnecting silently:', error?.message || error);
+        reconnectFirestore();
       }
     );
-    return unsubscribe;
-  } catch (err) {
-    console.warn('Failed to subscribe to notifications:', err);
-    return () => {};
-  }
+  });
 };
 
 // 7. User Reports & Grievances

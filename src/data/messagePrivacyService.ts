@@ -1,4 +1,5 @@
 import { Message, MessagePrivacyMode, MessagePrivacySettings, MessageReport, MessageReportReason, ChatThread } from '../types';
+import { format12HourTime } from '../services/timeUtils';
 
 const STORAGE_SETTINGS_KEY = 'funshann_message_privacy_settings';
 const STORAGE_REPORTS_KEY = 'funshann_message_reports';
@@ -151,7 +152,7 @@ export const updateThreadAfterMessageDeletion = (
   } else {
     newLastMessageData = {
       text: 'No messages yet',
-      timestamp: 'Just now',
+      timestamp: format12HourTime(Date.now()),
       isRead: true,
       senderId: '',
     };
