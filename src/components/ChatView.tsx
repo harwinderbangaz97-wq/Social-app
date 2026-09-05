@@ -357,7 +357,7 @@ const TypingIndicatorBubble: React.FC<{ participant: User }> = ({ participant })
       {/* Participant Avatar */}
       <div className="w-8 h-8 rounded-full neu-raised p-0.5 flex-shrink-0 mb-1">
         <img
-          src={participant.avatar}
+          src={participant.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
           alt={participant.name}
           className="w-full h-full rounded-full object-cover"
         />
@@ -2270,7 +2270,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="relative w-10 h-10 rounded-full flex-shrink-0">
                             <img
-                              src={contact.avatar}
+                              src={contact.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                               alt={contact.name}
                               className="w-full h-full rounded-full object-cover"
                             />

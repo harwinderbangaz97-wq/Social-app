@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Settings,
   Edit3,
   Grid,
+  List,
   Bookmark,
   MapPin,
   Link as LinkIcon,
@@ -36,13 +37,15 @@ import {
   UserCheck,
   Share2,
   MoreVertical,
+  Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Post, ThemeMode, SocialLink } from '../types';
 import { EditProfileModal } from './EditProfileModal';
 import { IndividualUserMenu } from './IndividualUserMenu';
+import { FeedCard } from './FeedCard';
 import { useNavigation } from '../context/NavigationContext';
-import { DEFAULT_AVATAR } from '../services/firebase';
+import { DEFAULT_AVATAR, getFollowersListForUser, getFollowingListForUser } from '../services/firebase';
 
 interface ProfileViewProps {
   currentUser: User;
@@ -64,6 +67,19 @@ interface ProfileViewProps {
   onClearChat?: (userId: string) => void;
   allUsers?: User[];
   onUserClick?: (user: User) => void;
+  // Post interactive action callbacks
+  onLike?: (postId: string) => void;
+  onDislike?: (postId: string) => void;
+  onReact?: (postId: string, reaction: 'like' | 'dislike') => void;
+  onEmojiReact?: (postId: string, emoji: string) => void;
+  onCommentClick?: (post: Post) => void;
+  onShareClick?: (post: Post) => void;
+  onOpenPost?: (post: Post) => void;
+  onAddComment?: (postId: string, text: string) => void;
+  onToggleSave?: (postId: string) => void;
+  onDeletePost?: (postId: string) => void;
+  onHidePost?: (postId: string) => void;
+  onUpdateCaption?: (postId: string, newCaption: string) => void;
 }
 
 const getSocialIcon = (platform: SocialLink['platform']) => {
@@ -119,11 +135,33 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
   onClearChat,
   allUsers = [],
   onUserClick,
+  onLike,
+  onDislike,
+  onReact,
+  onEmojiReact,
+  onCommentClick,
+  onShareClick,
+  onOpenPost,
+  onAddComment,
+  onToggleSave,
+  onDeletePost,
+  onHidePost,
+  onUpdateCaption,
 }) => {
-  const { navState, setIsEditProfileOpen, openPostPreview, closePostPreview } = useNavigation();
+  const {
+    navState,
+    setIsEditProfileOpen,
+    openPostPreview,
+    closePostPreview,
+    openComments,
+    openShareSheet,
+  } = useNavigation();
   const [activeSubTab, setActiveSubTab] = useState<'posts' | 'saved'>('posts');
+  const [viewMode, setViewMode] = useState<'cards' | 'grid'>('cards');
   const [isIndividualMenuOpen, setIsIndividualMenuOpen] = useState(false);
   const [listModalType, setListModalType] = useState<'followers' | 'following' | null>(null);
+  const [modalUsers, setModalUsers] = useState<User[]>([]);
+  const [isLoadingModalUsers, setIsLoadingModalUsers] = useState<boolean>(false);
   const postGridRef = useRef<HTMLDivElement | null>(null);
   const isEditModalOpen = navState.isEditProfileOpen;
   const selectedPreviewPost = navState.previewPost;
@@ -149,6 +187,74 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
     displayedUser.avatar ||
     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
+  // Fetch Followers / Following from Firestore for the target profile user
+  const targetProfileUserId = displayedUser?.id || profileUser?.id || currentUser?.id;
+
+  useEffect(() => {
+    if (!listModalType || !targetProfileUserId) {
+      setModalUsers([]);
+      setIsLoadingModalUsers(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingModalUsers(true);
+
+    const fetchFollowList = async () => {
+      try {
+        let results: User[] = [];
+        if (listModalType === 'followers') {
+          results = await getFollowersListForUser(targetProfileUserId, allUsers);
+        } else if (listModalType === 'following') {
+          results = await getFollowingListForUser(targetProfileUserId, allUsers);
+        }
+        if (isMounted) {
+          setModalUsers(results);
+        }
+      } catch (err) {
+        console.warn('Error fetching followers/following list:', err);
+        if (isMounted) {
+          setModalUsers([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingModalUsers(false);
+        }
+      }
+    };
+
+    fetchFollowList();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [listModalType, targetProfileUserId, allUsers]);
+
+  // Ensure main document & body scrolling is never locked when viewing profile
+  useEffect(() => {
+    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
+
+  // Manage body scroll lock specifically while Followers / Following modal is open
+  useEffect(() => {
+    if (listModalType) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [listModalType]);
+
   const displayPosts = isOwnProfile
     ? activeSubTab === 'posts'
       ? userPosts
@@ -157,26 +263,101 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
 
   const handleShareProfile = async () => {
     const profileUrl = `${window.location.origin}${window.location.pathname}#user-${displayedUser.username}`;
+    const shareData = {
+      title: `${displayedUser.name} (@${displayedUser.username}) on Funshann`,
+      text: `Check out ${displayedUser.name}'s profile on Funshann! ${displayedUser.bio ? displayedUser.bio.slice(0, 100) : ''}`.trim(),
+      url: profileUrl,
+    };
+
+    // 1. Web Native Share API (mobile system share sheet)
+    if (typeof navigator !== 'undefined' && navigator.share && typeof navigator.share === 'function') {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return; // User cancelled share dialog
+        }
+        console.warn('Native share error, falling back to clipboard:', err);
+      }
+    }
+
+    // 2. Clipboard copy fallback
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(profileUrl);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = profileUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      if (onShowToast) {
+        onShowToast(`@${displayedUser.username}'s profile link copied! 📋`);
       }
     } catch {
-      // ignore
+      if (onShowToast) {
+        onShowToast(`@${displayedUser.username}'s profile link copied! 📋`);
+      }
     }
-    if (onShowToast) {
-      onShowToast(`@${displayedUser.username}'s profile link copied! 📋`);
+  };
+
+  const handlePostLikeClick = (e: React.MouseEvent, postId: string) => {
+    e.stopPropagation();
+    if (onReact) {
+      onReact(postId, 'like');
+    } else if (onLike) {
+      onLike(postId);
+    }
+  };
+
+  const handlePostDislikeClick = (e: React.MouseEvent, postId: string) => {
+    e.stopPropagation();
+    if (onReact) {
+      onReact(postId, 'dislike');
+    } else if (onDislike) {
+      onDislike(postId);
+    }
+  };
+
+  const handlePostCommentClick = (e: React.MouseEvent, post: Post) => {
+    e.stopPropagation();
+    if (onCommentClick) {
+      onCommentClick(post);
+    } else {
+      openComments(post);
+    }
+  };
+
+  const handlePostShareClick = (e: React.MouseEvent, post: Post) => {
+    e.stopPropagation();
+    if (onShareClick) {
+      onShareClick(post);
+    } else {
+      openShareSheet(post);
     }
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto px-4 pb-28 pt-2">
+    <div
+      className="w-full max-w-lg mx-auto px-4 pb-36 pt-2 min-h-full overflow-y-auto overscroll-y-contain"
+      style={{ WebkitOverflowScrolling: 'touch' }}
+    >
       {/* Top Header Bar when viewing another user's profile */}
       {!isOwnProfile && (
         <div className="flex items-center justify-between mb-3 px-1">
           <motion.button
             whileTap={{ scale: 0.92 }}
-            onClick={onBack}
+            onClick={() => {
+              document.body.style.overflow = '';
+              document.documentElement.style.overflow = '';
+              if (onBack) onBack();
+            }}
             className="h-9 px-3.5 rounded-full neu-raised text-xs font-bold text-slate-700 hover:text-[#5B9DFF] flex items-center gap-1.5 transition cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -247,6 +428,16 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
                 >
                   <Edit3 className="w-4 h-4 text-[#5B9DFF]" />
                   <span>Edit Profile</span>
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.94 }}
+                  onClick={handleShareProfile}
+                  aria-label="Share Profile"
+                  title="Share Profile"
+                  className="w-11 h-11 rounded-full neu-raised flex items-center justify-center text-slate-600 hover:text-[#5B9DFF] transition-colors cursor-pointer shrink-0"
+                >
+                  <Share2 className="w-5 h-5" />
                 </motion.button>
 
                 <motion.button
@@ -442,45 +633,83 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      {/* Tabs: Grid vs Saved (or just Grid for other users) */}
-      {isOwnProfile ? (
-        <div className="flex items-center gap-3 mb-4">
-          <button
-            onClick={() => setActiveSubTab('posts')}
-            className={`flex-1 h-11.5 rounded-full text-[13.5px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              activeSubTab === 'posts'
-                ? 'neu-active-blue text-white shadow-md'
-                : 'neu-raised text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Grid className="w-4.5 h-4.5" />
-            <span>My Photos ({userPosts.length})</span>
-          </button>
+      {/* Tabs & View Mode Switcher */}
+      <div className="space-y-3 mb-4">
+        {isOwnProfile ? (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setActiveSubTab('posts')}
+              className={`flex-1 h-11.5 rounded-full text-[13.5px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                activeSubTab === 'posts'
+                  ? 'neu-active-blue text-white shadow-md'
+                  : 'neu-raised text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Grid className="w-4.5 h-4.5" />
+              <span>My Photos ({userPosts.length})</span>
+            </button>
 
-          <button
-            onClick={() => setActiveSubTab('saved')}
-            className={`flex-1 h-11.5 rounded-full text-[13.5px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              activeSubTab === 'saved'
-                ? 'neu-active-blue text-white shadow-md'
-                : 'neu-raised text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Bookmark className="w-4.5 h-4.5" />
-            <span>Saved ({savedPosts.length})</span>
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between mb-3 px-1">
+            <button
+              onClick={() => setActiveSubTab('saved')}
+              className={`flex-1 h-11.5 rounded-full text-[13.5px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                activeSubTab === 'saved'
+                  ? 'neu-active-blue text-white shadow-md'
+                  : 'neu-raised text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Bookmark className="w-4.5 h-4.5" />
+              <span>Saved ({savedPosts.length})</span>
+            </button>
+          </div>
+        ) : null}
+
+        {/* Section Header with Feed vs Grid Layout Switcher */}
+        <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <Grid className="w-4.5 h-4.5 text-[#5B9DFF]" />
+            <Layers className="w-4.5 h-4.5 text-[#5B9DFF]" />
             <span className="text-sm font-bold text-slate-800">
-              Posts & Captures ({displayPosts.length})
+              {isOwnProfile
+                ? activeSubTab === 'posts'
+                  ? `Posts & Captures (${displayPosts.length})`
+                  : `Saved Collection (${displayPosts.length})`
+                : `Posts & Captures (${displayPosts.length})`}
             </span>
           </div>
-        </div>
-      )}
 
-      {/* Photo Gallery Grid */}
+          {displayPosts.length > 0 && (
+            <div className="flex items-center gap-1 p-1 rounded-full neu-inset bg-slate-100/80">
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                title="Feed Card View (Full interactions)"
+                className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'cards'
+                    ? 'neu-active-blue text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Feed</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                title="Grid View (Compact gallery)"
+                className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'neu-active-blue text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Grid className="w-3.5 h-3.5" />
+                <span>Grid</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Posts Section (Feed Card View or Interactive Grid View) */}
       {displayPosts.length === 0 ? (
         <div className="neu-flat rounded-[24px] p-8 text-center">
           <p className="text-sm font-semibold text-slate-700">No posts in this collection</p>
@@ -490,44 +719,118 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
               : `@${displayedUser.username} has not shared photos yet`}
           </p>
         </div>
+      ) : viewMode === 'cards' ? (
+        <div className="space-y-4">
+          {displayPosts.map((post) => (
+            <FeedCard
+              key={post.id}
+              post={post}
+              currentUser={currentUser}
+              allUsers={allUsers}
+              onLike={onLike || (() => {})}
+              onDislike={onDislike}
+              onReact={onReact}
+              onEmojiReact={onEmojiReact}
+              onCommentClick={onCommentClick || openComments}
+              onShareClick={onShareClick || openShareSheet}
+              onOpenPost={onOpenPost || openPostPreview}
+              onUserClick={onUserClick}
+              onAddComment={onAddComment}
+              onToggleSave={onToggleSave}
+              onDeletePost={onDeletePost}
+              onHidePost={onHidePost}
+              onUpdateCaption={onUpdateCaption}
+              onShowToast={onShowToast}
+            />
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3.5">
           {displayPosts.map((post) => (
             <motion.div
               key={post.id}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => openPostPreview(post)}
-              className="relative aspect-[4/5] rounded-[20px] overflow-hidden neu-raised cursor-pointer group"
+              whileHover={{ scale: 1.01 }}
+              className="relative aspect-[4/5] rounded-[22px] overflow-hidden neu-raised group flex flex-col justify-end"
             >
-              <img
-                src={post.imageUrl}
-                alt={post.caption}
-                loading="lazy"
-                decoding="async"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-              />
+              {/* Post Image (Click opens full post) */}
+              <div
+                onClick={() => (onOpenPost || openPostPreview)(post)}
+                className="absolute inset-0 cursor-pointer"
+              >
+                <img
+                  src={post.imageUrl}
+                  alt={post.caption}
+                  loading="lazy"
+                  decoding="async"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+              </div>
 
-              {/* Hover overlay with likes and comments */}
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-3 flex flex-col justify-end text-white">
-                <p className="text-[11px] line-clamp-2 mb-2 font-medium">
-                  {post.caption}
-                </p>
-                <div className="flex items-center gap-3 text-xs">
-                  <span className="flex items-center gap-1 font-bold">
-                    <ThumbsUp className="w-3.5 h-3.5 fill-white" />
-                    {post.likesCount}
-                  </span>
-                  {(post.dislikesCount || 0) > 0 && (
-                    <span className="flex items-center gap-1 font-bold text-rose-200">
-                      <ThumbsDown className="w-3.5 h-3.5 fill-rose-200" />
-                      {post.dislikesCount}
-                    </span>
-                  )}
-                  <span className="flex items-center gap-1 font-bold">
-                    <MessageCircle className="w-3.5 h-3.5 fill-white" />
-                    {post.commentsCount}
-                  </span>
+              {/* Interactive Bottom Overlay Bar with Action Buttons */}
+              <div className="relative z-10 p-2.5 bg-gradient-to-t from-slate-950/85 via-slate-900/50 to-transparent text-white flex flex-col justify-end">
+                {post.caption && (
+                  <p
+                    onClick={() => (onOpenPost || openPostPreview)(post)}
+                    className="text-[11px] line-clamp-1 mb-2 font-medium text-slate-100 cursor-pointer drop-shadow-xs"
+                  >
+                    {post.caption}
+                  </p>
+                )}
+
+                {/* Action Buttons: Like, Dislike, Comment, Share */}
+                <div className="flex items-center justify-between gap-1 text-xs">
+                  {/* Like */}
+                  <motion.button
+                    whileTap={{ scale: 0.85 }}
+                    onClick={(e) => handlePostLikeClick(e, post.id)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-full backdrop-blur-md transition cursor-pointer font-bold ${
+                      post.isLiked
+                        ? 'bg-[#5B9DFF] text-white shadow-xs'
+                        : 'bg-black/40 text-slate-200 hover:bg-black/60'
+                    }`}
+                    title="Like post"
+                  >
+                    <ThumbsUp className={`w-3.5 h-3.5 ${post.isLiked ? 'fill-white' : ''}`} />
+                    <span className="text-[11px]">{post.likesCount}</span>
+                  </motion.button>
+
+                  {/* Dislike */}
+                  <motion.button
+                    whileTap={{ scale: 0.85 }}
+                    onClick={(e) => handlePostDislikeClick(e, post.id)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-full backdrop-blur-md transition cursor-pointer font-bold ${
+                      post.isDisliked
+                        ? 'bg-rose-500 text-white shadow-xs'
+                        : 'bg-black/40 text-slate-200 hover:bg-black/60'
+                    }`}
+                    title="Dislike post"
+                  >
+                    <ThumbsDown className={`w-3.5 h-3.5 ${post.isDisliked ? 'fill-white' : ''}`} />
+                    {(post.dislikesCount || 0) > 0 && (
+                      <span className="text-[11px]">{post.dislikesCount}</span>
+                    )}
+                  </motion.button>
+
+                  {/* Comment */}
+                  <motion.button
+                    whileTap={{ scale: 0.85 }}
+                    onClick={(e) => handlePostCommentClick(e, post)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-slate-200 transition cursor-pointer font-bold"
+                    title="Open comments"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span className="text-[11px]">{post.commentsCount}</span>
+                  </motion.button>
+
+                  {/* Share */}
+                  <motion.button
+                    whileTap={{ scale: 0.85 }}
+                    onClick={(e) => handlePostShareClick(e, post)}
+                    className="w-7 h-7 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md flex items-center justify-center text-slate-200 hover:text-white transition cursor-pointer"
+                    title="Share post"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                  </motion.button>
                 </div>
               </div>
             </motion.div>
@@ -593,21 +896,17 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {(() => {
-                  const targetUsers = allUsers || [];
-                  const filtered = listModalType === 'following'
-                    ? targetUsers.filter(u => (displayedUser.following || []).includes(u.id) || (displayedUser.id === currentUser.id && (currentUser.following || []).includes(u.id)))
-                    : targetUsers.filter(u => (u.following || []).includes(displayedUser.id));
-
-                  if (filtered.length === 0) {
-                    return (
-                      <div className="text-center py-8 text-slate-400 text-sm">
-                        No {listModalType} found
-                      </div>
-                    );
-                  }
-
-                  return filtered.map((user) => (
+                {isLoadingModalUsers ? (
+                  <div className="flex flex-col items-center justify-center py-10 space-y-2.5">
+                    <div className="w-7 h-7 border-2 border-[#5B9DFF] border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs text-slate-400 font-medium">Loading {listModalType}...</span>
+                  </div>
+                ) : modalUsers.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-sm">
+                    No {listModalType} found
+                  </div>
+                ) : (
+                  modalUsers.map((user) => (
                     <div
                       key={user.id}
                       onClick={() => {
@@ -634,8 +933,8 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
                         View
                       </span>
                     </div>
-                  ));
-                })()}
+                  ))
+                )}
               </div>
             </motion.div>
           </motion.div>

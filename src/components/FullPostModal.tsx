@@ -12,10 +12,12 @@ import {
   ThumbsDown,
   MessageCircle,
   X,
+  SmilePlus,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, User } from '../types';
 import { UniversalReportModal } from './UniversalReportModal';
+import { EmojiPickerPopup } from './EmojiPickerPopup';
 
 interface FullPostModalProps {
   post: Post | null;
@@ -25,6 +27,7 @@ interface FullPostModalProps {
   onLike?: (postId: string) => void;
   onDislike?: (postId: string) => void;
   onReact?: (postId: string, reaction: 'like' | 'dislike') => void;
+  onEmojiReact?: (postId: string, emoji: string) => void;
   onAddComment?: (postId: string, text: string) => void;
   onShareClick?: (post: Post) => void;
   onUserClick?: (user: User) => void;
@@ -43,6 +46,7 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
   onLike,
   onDislike,
   onReact,
+  onEmojiReact,
   onShareClick,
   onUserClick,
   onToggleSave,
@@ -51,6 +55,7 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
   onShowToast,
 }) => {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isEditingCaption, setIsEditingCaption] = useState(false);
@@ -290,7 +295,7 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
           <div className="relative max-w-full max-h-[75vh] flex items-center justify-center">
             {isVideo ? (
               <video
-                src={post.imageUrl}
+                src={post.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80'}
                 controls
                 autoPlay
                 loop
@@ -299,7 +304,7 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
               />
             ) : (
               <img
-                src={post.imageUrl}
+                src={post.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80'}
                 alt={post.caption || 'Post image'}
                 loading="lazy"
                 decoding="async"
@@ -333,7 +338,7 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 text-xs font-semibold">
+              <div className="flex items-center gap-2 text-xs font-semibold">
                 <button
                   type="button"
                   onClick={() => {
@@ -370,12 +375,75 @@ export const FullPostModal: React.FC<FullPostModalProps> = ({
                   </button>
                 )}
 
+                {/* Emoji Reaction Trigger */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmojiPicker((prev) => !prev)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full transition cursor-pointer ${
+                      post.userEmojiReaction
+                        ? 'bg-blue-500/30 text-blue-300 border border-blue-400/40'
+                        : 'bg-white/10 hover:bg-white/25 text-white'
+                    }`}
+                    title="React with emoji"
+                  >
+                    <SmilePlus className="w-3.5 h-3.5" />
+                    <span>{post.userEmojiReaction || 'React'}</span>
+                  </button>
+                  <AnimatePresence>
+                    {showEmojiPicker && (
+                      <EmojiPickerPopup
+                        selectedEmoji={post.userEmojiReaction || null}
+                        onSelectEmoji={(emoji) => {
+                          if (onEmojiReact) {
+                            onEmojiReact(post.id, emoji);
+                          }
+                          setShowEmojiPicker(false);
+                        }}
+                        onClose={() => setShowEmojiPicker(false)}
+                        align="right"
+                        position="top"
+                      />
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 text-white/90">
                   <MessageCircle className="w-3.5 h-3.5" />
                   <span>{post.commentsCount || 0}</span>
                 </div>
               </div>
             </div>
+
+            {/* Reactions badges row if reactions exist */}
+            {Array.isArray(post.reactions) && post.reactions.length > 0 && (
+              <div className="flex items-center flex-wrap gap-1.5 pt-1">
+                {post.reactions.map((r) => {
+                  const isReacted =
+                    post.userEmojiReaction === r.emoji ||
+                    (currentUser?.id && r.userIds?.includes(currentUser.id));
+                  return (
+                    <button
+                      key={`modal_react_${r.emoji}`}
+                      type="button"
+                      onClick={() => {
+                        if (onEmojiReact) {
+                          onEmojiReact(post.id, r.emoji);
+                        }
+                      }}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition cursor-pointer ${
+                        isReacted
+                          ? 'bg-blue-500/40 text-blue-200 border border-blue-400/50'
+                          : 'bg-white/15 hover:bg-white/25 text-white/90'
+                      }`}
+                    >
+                      <span className="text-sm">{r.emoji}</span>
+                      <span className="text-[11px] font-bold">{r.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {post.caption && (
               <p className="text-xs text-white/90 font-normal leading-relaxed line-clamp-2">

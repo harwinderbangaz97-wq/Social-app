@@ -14,7 +14,7 @@ import {
   Unsubscribe,
   Timestamp,
 } from 'firebase/firestore';
-import { db, auth, ensureFirebaseAuth, createResilientSubscription, reconnectFirestore } from './firebase';
+import { db, auth, ensureFirebaseAuth } from './firebase';
 import { Message, VoiceNoteData, User, MessagePrivacyMode } from '../types';
 import { parseTimestampToMs, format12HourTime } from './timeUtils';
 
@@ -64,11 +64,11 @@ export const subscribeToChatMessages = (
 ): Unsubscribe => {
   if (!chatId) return () => {};
 
-  return createResilientSubscription(() => {
+  try {
     const messagesRef = collection(db, 'chats', chatId, 'messages');
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
 
-    return onSnapshot(
+    const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
         const messages: Message[] = snapshot.docs.map((docSnap) => {
@@ -82,11 +82,15 @@ export const subscribeToChatMessages = (
         callback(messages);
       },
       (error) => {
-        console.warn('Real-time chat messages listener reconnecting silently:', error?.message || error);
-        reconnectFirestore();
+        console.warn('Real-time chat messages listener notice:', error?.message || error);
       }
     );
-  });
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to chat messages:', err);
+    return () => {};
+  }
 };
 
 /**
@@ -334,9 +338,9 @@ export const createOrEnsureChatDocument = async (
 export const subscribeToAllChatRooms = (
   callback: (rooms: Array<{ id: string; participantIds: string[]; participants: string[]; lastMessage?: any; updatedAt?: any }>) => void
 ): Unsubscribe => {
-  return createResilientSubscription(() => {
+  try {
     const chatsRef = collection(db, 'chats');
-    return onSnapshot(
+    const unsubscribe = onSnapshot(
       chatsRef,
       (snapshot) => {
         const rooms: Array<{ id: string; participantIds: string[]; participants: string[]; lastMessage?: any; updatedAt?: any }> = [];
@@ -360,9 +364,12 @@ export const subscribeToAllChatRooms = (
         callback(rooms);
       },
       (error) => {
-        console.warn('Chat rooms onSnapshot reconnecting silently:', error?.message || error);
-        reconnectFirestore();
+        console.warn('Chat rooms onSnapshot notice:', error?.message || error);
       }
     );
-  });
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to subscribe to chat rooms:', err);
+    return () => {};
+  }
 };

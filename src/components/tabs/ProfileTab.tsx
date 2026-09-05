@@ -21,6 +21,18 @@ interface ProfileTabProps {
   onClearChat: (threadId: string) => void;
   allUsers?: User[];
   onUserClick?: (user: User) => void;
+  onLike?: (postId: string) => void;
+  onDislike?: (postId: string) => void;
+  onReact?: (postId: string, reaction: 'like' | 'dislike') => void;
+  onEmojiReact?: (postId: string, emoji: string) => void;
+  onCommentClick?: (post: Post) => void;
+  onShareClick?: (post: Post) => void;
+  onOpenPost?: (post: Post) => void;
+  onAddComment?: (postId: string, text: string) => void;
+  onToggleSave?: (postId: string) => void;
+  onDeletePost?: (postId: string) => void;
+  onHidePost?: (postId: string) => void;
+  onUpdateCaption?: (postId: string, newCaption: string) => void;
 }
 
 export const ProfileTab: React.FC<ProfileTabProps> = (props) => {

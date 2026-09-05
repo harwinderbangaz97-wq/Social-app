@@ -191,7 +191,7 @@ export const IndividualUserMenu: React.FC<IndividualUserMenuProps> = ({
               ) : (
                 <div className="relative w-9.5 h-9.5 rounded-full neu-raised p-0.5 flex-shrink-0">
                   <img
-                    src={user.avatar}
+                    src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                     alt={user.name}
                     className="w-full h-full rounded-full object-cover"
                   />

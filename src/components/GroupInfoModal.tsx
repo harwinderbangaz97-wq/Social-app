@@ -111,7 +111,11 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full overflow-hidden neu-inset flex-shrink-0">
-              <img src={thread.groupAvatar} alt={thread.groupName} className="w-full h-full object-cover" />
+              <img
+                src={thread.groupAvatar || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80'}
+                alt={thread.groupName}
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 truncate max-w-[240px]">
@@ -240,7 +244,11 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                     className="flex items-center justify-between p-2.5 rounded-[14px] bg-white border border-slate-200/60 shadow-xs"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <img src={member.avatar} alt={member.name} className="w-9 h-9 rounded-full object-cover" />
+                      <img
+                        src={member.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                        alt={member.name}
+                        className="w-9 h-9 rounded-full object-cover"
+                      />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <h4 className="text-xs font-bold text-slate-800 truncate">

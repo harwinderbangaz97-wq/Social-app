@@ -5,6 +5,7 @@ import {
   User,
   Story,
   Post,
+  PostReaction,
   ChatThread,
   Message,
   VoiceNoteData,
@@ -682,6 +683,8 @@ function AppContent() {
       let nextIsLiked = target.isLiked || false;
       let nextIsDisliked = target.isDisliked || false;
       let nextUserReaction = target.userReaction;
+      let nextLikes: string[] = Array.isArray(target.likes) ? [...target.likes] : [];
+      let nextDislikes: string[] = Array.isArray(target.dislikes) ? [...target.dislikes] : [];
 
       if (reaction === 'like') {
         if (target.isLiked) {
@@ -689,14 +692,19 @@ function AppContent() {
           nextLikesCount = Math.max(0, nextLikesCount - 1);
           nextIsLiked = false;
           nextUserReaction = null;
+          nextLikes = nextLikes.filter((id) => id !== currentUser.id);
         } else {
           // User wants to like
           nextLikesCount = nextLikesCount + 1;
           nextIsLiked = true;
+          if (!nextLikes.includes(currentUser.id)) {
+            nextLikes.push(currentUser.id);
+          }
           // If was disliked, remove dislike
           if (target.isDisliked) {
             nextDislikesCount = Math.max(0, nextDislikesCount - 1);
             nextIsDisliked = false;
+            nextDislikes = nextDislikes.filter((id) => id !== currentUser.id);
           }
           nextUserReaction = 'like';
         }
@@ -706,14 +714,19 @@ function AppContent() {
           nextDislikesCount = Math.max(0, nextDislikesCount - 1);
           nextIsDisliked = false;
           nextUserReaction = null;
+          nextDislikes = nextDislikes.filter((id) => id !== currentUser.id);
         } else {
           // User wants to dislike
           nextDislikesCount = nextDislikesCount + 1;
           nextIsDisliked = true;
+          if (!nextDislikes.includes(currentUser.id)) {
+            nextDislikes.push(currentUser.id);
+          }
           // If was liked, remove like
           if (target.isLiked) {
             nextLikesCount = Math.max(0, nextLikesCount - 1);
             nextIsLiked = false;
+            nextLikes = nextLikes.filter((id) => id !== currentUser.id);
           }
           nextUserReaction = 'dislike';
         }
@@ -729,6 +742,8 @@ function AppContent() {
         isLiked: nextIsLiked,
         isDisliked: nextIsDisliked,
         userReaction: nextUserReaction,
+        likes: nextLikes,
+        dislikes: nextDislikes,
       }).catch(console.warn);
 
       // Update post in state
@@ -741,6 +756,8 @@ function AppContent() {
             isLiked: nextIsLiked,
             isDisliked: nextIsDisliked,
             userReaction: nextUserReaction,
+            likes: nextLikes,
+            dislikes: nextDislikes,
           };
         }
         return p;
@@ -793,6 +810,88 @@ function AppContent() {
 
   const handleLikePost = (postId: string) => handleReaction(postId, 'like');
   const handleDislikePost = (postId: string) => handleReaction(postId, 'dislike');
+
+  // Handle Emoji Reaction on a Post (Wide variety beyond like/dislike)
+  const handleEmojiReaction = (postId: string, emoji: string) => {
+    setPosts((prevPosts) => {
+      const target = prevPosts.find((p) => p.id === postId);
+      if (!target) return prevPosts;
+
+      const currentReactions: PostReaction[] = Array.isArray(target.reactions)
+        ? [...target.reactions]
+        : [];
+      const userReactionEmoji = target.userEmojiReaction;
+      const userId = currentUser.id;
+
+      let nextReactions = [...currentReactions];
+      let nextUserEmojiReaction: string | null = null;
+
+      if (userReactionEmoji === emoji) {
+        // Toggled off the same emoji
+        nextReactions = nextReactions
+          .map((r) => {
+            if (r.emoji === emoji) {
+              const newUserIds = (r.userIds || []).filter((id) => id !== userId);
+              return { ...r, count: Math.max(0, r.count - 1), userIds: newUserIds };
+            }
+            return r;
+          })
+          .filter((r) => r.count > 0);
+        nextUserEmojiReaction = null;
+      } else {
+        // If user already had a different emoji reaction, remove it first
+        if (userReactionEmoji) {
+          nextReactions = nextReactions
+            .map((r) => {
+              if (r.emoji === userReactionEmoji) {
+                const newUserIds = (r.userIds || []).filter((id) => id !== userId);
+                return { ...r, count: Math.max(0, r.count - 1), userIds: newUserIds };
+              }
+              return r;
+            })
+            .filter((r) => r.count > 0);
+        }
+
+        // Add new reaction
+        const existingIdx = nextReactions.findIndex((r) => r.emoji === emoji);
+        if (existingIdx >= 0) {
+          const item = nextReactions[existingIdx];
+          const newUserIds = (item.userIds || []).includes(userId)
+            ? item.userIds
+            : [...(item.userIds || []), userId];
+          nextReactions[existingIdx] = {
+            ...item,
+            count: item.count + 1,
+            userIds: newUserIds,
+          };
+        } else {
+          nextReactions.push({
+            emoji,
+            count: 1,
+            userIds: [userId],
+          });
+        }
+        nextUserEmojiReaction = emoji;
+      }
+
+      // Sync reaction to Firestore
+      updatePostInFirestore(postId, {
+        reactions: nextReactions,
+        userEmojiReaction: nextUserEmojiReaction,
+      }).catch(console.warn);
+
+      return prevPosts.map((p) => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            reactions: nextReactions,
+            userEmojiReaction: nextUserEmojiReaction,
+          };
+        }
+        return p;
+      });
+    });
+  };
 
   // Add Comment to Post
   const handleAddComment = (postId: string, text: string) => {
@@ -1609,7 +1708,7 @@ function AppContent() {
       navState.activeSharePost !== null ||
       navState.isNotificationOpen ||
       navState.isSettingsOpen ||
-      navState.profileHistory.length > 0;
+      navState.previewPost !== null;
 
     if (isOverlayOpen) {
       document.body.style.overflow = 'hidden';
@@ -1631,7 +1730,7 @@ function AppContent() {
     navState.activeSharePost,
     navState.isNotificationOpen,
     navState.isSettingsOpen,
-    navState.profileHistory.length,
+    navState.previewPost,
   ]);
 
   useEffect(() => {
@@ -1710,11 +1809,13 @@ function AppContent() {
               stories={stories}
               currentUser={currentUser}
               posts={posts}
+              allUsers={users}
               onSelectStory={(index) => openStoryViewer(index)}
               onAddStory={handleAddStory}
               onLike={handleLikePost}
               onDislike={handleDislikePost}
               onReact={handleReaction}
+              onEmojiReact={handleEmojiReaction}
               onCommentClick={(p) => openComments(p)}
               onShareClick={(p) => openShareSheet(p)}
               onOpenPost={openPostPreview}
@@ -1800,6 +1901,18 @@ function AppContent() {
               onClearChat={handleClearChatThread}
               allUsers={users}
               onUserClick={handleOpenProfile}
+              onLike={handleLikePost}
+              onDislike={handleDislikePost}
+              onReact={handleReaction}
+              onEmojiReact={handleEmojiReaction}
+              onCommentClick={(p) => openComments(p)}
+              onShareClick={(p) => openShareSheet(p)}
+              onOpenPost={openPostPreview}
+              onAddComment={handleAddComment}
+              onToggleSave={handleToggleSavePost}
+              onDeletePost={handleDeletePost}
+              onHidePost={handleHidePost}
+              onUpdateCaption={handleUpdateCaption}
             />
           )}
         </Suspense>
@@ -1921,6 +2034,7 @@ function AppContent() {
             onLike={handleLikePost}
             onDislike={handleDislikePost}
             onReact={handleReaction}
+            onEmojiReact={handleEmojiReaction}
             onAddComment={handleAddComment}
             onShareClick={(p) => openShareSheet(p)}
             onUserClick={handleOpenProfile}

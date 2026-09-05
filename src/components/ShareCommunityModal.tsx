@@ -279,7 +279,7 @@ export const ShareCommunityModal: React.FC<ShareCommunityModalProps> = ({
                     <div key={user.id} className="flex flex-col items-center flex-shrink-0">
                       <div className="relative w-12 h-12 rounded-full neu-raised p-0.5 mb-1">
                         <img
-                          src={user.avatar}
+                          src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                           alt={user.name}
                           className="w-full h-full rounded-full object-cover"
                         />

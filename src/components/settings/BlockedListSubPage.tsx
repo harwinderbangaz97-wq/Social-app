@@ -100,7 +100,7 @@ export const BlockedListSubPage: React.FC<BlockedListSubPageProps> = ({
               <div key={user.id} className="p-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <img
-                    src={user.avatar}
+                    src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                     alt={user.name}
                     className="w-10 h-10 rounded-full object-cover neu-raised"
                   />

@@ -35,7 +35,7 @@ export const AccountSecurityHubSubPage: React.FC<AccountSecurityHubSubPageProps>
       <div className="neu-flat rounded-[24px] p-4 flex items-center gap-3 bg-gradient-to-r from-blue-50/50 via-white to-white border border-blue-100/60">
         <div className="w-12 h-12 rounded-full neu-raised overflow-hidden flex-shrink-0">
           <img
-            src={currentUser.avatar}
+            src={currentUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
             alt={currentUser.name}
             className="w-full h-full object-cover"
           />

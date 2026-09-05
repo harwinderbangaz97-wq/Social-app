@@ -72,6 +72,12 @@ export interface Comment {
   isLiked?: boolean;
 }
 
+export interface PostReaction {
+  emoji: string;
+  count: number;
+  userIds: string[];
+}
+
 export interface Post {
   id: string;
   userId: string;
@@ -92,6 +98,8 @@ export interface Post {
   isAutoRemoved?: boolean;
   comments: Comment[];
   location?: string;
+  reactions?: PostReaction[];
+  userEmojiReaction?: string | null;
 }
 
 export interface VoiceNoteData {

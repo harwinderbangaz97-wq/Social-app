@@ -21,19 +21,25 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Smile,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Post, User } from '../types';
+import { Post, User, PostReaction } from '../types';
 import { UniversalReportModal } from './UniversalReportModal';
+import { EmojiPickerPopup } from './EmojiPickerPopup';
 import { useTranslation } from '../context/LanguageContext';
 import { formatRelativeTime, formatDetailed12HourTime } from '../services/timeUtils';
+import { useLongPress } from '../hooks/useLongPress';
+import { EngagementUsersModal, EngagementModalType } from './EngagementUsersModal';
 
 interface FeedCardProps {
   post: Post;
   currentUser: User;
+  allUsers?: User[];
   onLike: (postId: string) => void;
   onDislike?: (postId: string) => void;
   onReact?: (postId: string, reaction: 'like' | 'dislike') => void;
+  onEmojiReact?: (postId: string, emoji: string) => void;
   onCommentClick: (post: Post) => void;
   onShareClick: (post: Post) => void;
   onOpenPost?: (post: Post) => void;
@@ -46,12 +52,56 @@ interface FeedCardProps {
   onShowToast?: (message: string) => void;
 }
 
+interface ReactionPillItemProps {
+  reaction: PostReaction;
+  isUserReacted: boolean;
+  onSelectEmoji: (emoji: string) => void;
+  onOpenModal: (emoji: string) => void;
+}
+
+const ReactionPillItem: React.FC<ReactionPillItemProps> = ({
+  reaction,
+  isUserReacted,
+  onSelectEmoji,
+  onOpenModal,
+}) => {
+  const handlers = useLongPress({
+    onLongPress: () => {
+      onOpenModal(reaction.emoji);
+    },
+    onClick: () => {
+      onSelectEmoji(reaction.emoji);
+    },
+    delay: 500,
+  });
+
+  return (
+    <motion.button
+      type="button"
+      whileHover={{ scale: 1.08 }}
+      whileTap={{ scale: 0.92 }}
+      {...handlers}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all cursor-pointer select-none ${
+        isUserReacted
+          ? 'bg-blue-50 border border-blue-200 text-[#2563eb] font-bold shadow-2xs ring-1 ring-blue-300/60'
+          : 'bg-slate-100 hover:bg-slate-200/80 border border-slate-200/60 text-slate-700 font-medium'
+      }`}
+      title={`${reaction.count} reaction${reaction.count === 1 ? '' : 's'} (Hold to view users)`}
+    >
+      <span className="text-sm leading-none">{reaction.emoji}</span>
+      <span className="text-[11.5px] font-['Outfit']">{reaction.count}</span>
+    </motion.button>
+  );
+};
+
 const FeedCardComponent: React.FC<FeedCardProps> = ({
   post,
   currentUser,
+  allUsers = [],
   onLike,
   onDislike,
   onReact,
+  onEmojiReact,
   onCommentClick,
   onShareClick,
   onOpenPost,
@@ -76,6 +126,18 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [activeBurstEmoji, setActiveBurstEmoji] = useState<string | null>(null);
+  const [engagementModal, setEngagementModal] = useState<{
+    isOpen: boolean;
+    type: EngagementModalType;
+    initialFilterEmoji?: string | null;
+  }>({
+    isOpen: false,
+    type: 'reactions',
+    initialFilterEmoji: null,
+  });
+  const emojiPickerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
   const tapTimeoutRef = useRef<any>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -97,11 +159,131 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
   const myAvatar =
     currentUser?.avatar ||
     'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
+  const mediaUrl =
+    post.imageUrl && post.imageUrl.trim() !== ''
+      ? post.imageUrl
+      : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80';
   const postComments = Array.isArray(post.comments) ? post.comments : [];
+
+  const handleSelectEmojiReaction = (emoji: string) => {
+    if (onEmojiReact) {
+      onEmojiReact(post.id, emoji);
+    }
+    setActiveBurstEmoji(emoji);
+    setTimeout(() => setActiveBurstEmoji(null), 1200);
+    setShowEmojiPicker(false);
+  };
+
+  // Long-press engagement handlers (~500ms opens modal; short tap triggers action)
+  const likeLongPress = useLongPress({
+    onLongPress: () => {
+      setEngagementModal({
+        isOpen: true,
+        type: 'reactions',
+        initialFilterEmoji: '👍',
+      });
+    },
+    onClick: () => {
+      if (onReact) {
+        onReact(post.id, 'like');
+      } else {
+        onLike(post.id);
+      }
+    },
+    delay: 500,
+  });
+
+  const commentsLongPress = useLongPress({
+    onLongPress: () => {
+      setEngagementModal({
+        isOpen: true,
+        type: 'comments',
+      });
+    },
+    onClick: () => {
+      onCommentClick(post);
+    },
+    delay: 500,
+  });
+
+  const commentsLinkLongPress = useLongPress({
+    onLongPress: () => {
+      setEngagementModal({
+        isOpen: true,
+        type: 'comments',
+      });
+    },
+    onClick: () => {
+      onCommentClick(post);
+    },
+    delay: 500,
+  });
 
   const isOwnPost = Boolean(
     currentUserId && (post.userId === currentUserId || postAuthor.id === currentUserId)
   );
+
+  // Extract URL from caption if present for high-performance link preview
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const matchUrls = post.caption ? post.caption.match(urlRegex) : null;
+  const sharedUrl = matchUrls ? matchUrls[0] : null;
+
+  let domainName = '';
+  let cleanUrlTitle = '';
+  if (sharedUrl) {
+    try {
+      const parsedUrl = new URL(sharedUrl);
+      domainName = parsedUrl.hostname.replace('www.', '');
+      cleanUrlTitle = parsedUrl.pathname !== '/' ? parsedUrl.pathname.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') : domainName;
+    } catch {
+      domainName = sharedUrl;
+      cleanUrlTitle = sharedUrl;
+    }
+  }
+
+  const [ogData, setOgData] = useState<{
+    title?: string;
+    description?: string;
+    image?: string;
+    publisher?: string;
+  } | null>(null);
+  const [isLoadingOg, setIsLoadingOg] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!sharedUrl) {
+      setOgData(null);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingOg(true);
+
+    fetch(`https://api.microlink.io?url=${encodeURIComponent(sharedUrl)}`)
+      .then(res => res.json())
+      .then(result => {
+        if (!isMounted) return;
+        if (result && result.status === 'success' && result.data) {
+          setOgData({
+            title: result.data.title,
+            description: result.data.description,
+            image: result.data.image?.url,
+            publisher: result.data.publisher || domainName,
+          });
+        }
+      })
+      .catch(err => {
+        console.warn('Failed to fetch Open Graph metadata:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingOg(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [sharedUrl, domainName]);
 
   // Sync isSaved when post prop updates
   useEffect(() => {
@@ -246,68 +428,6 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
   };
 
   const isVideo = post.imageUrl.endsWith('.mp4') || post.imageUrl.startsWith('data:video');
-
-  // Extract URL from caption if present for high-performance link preview
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const matchUrls = post.caption ? post.caption.match(urlRegex) : null;
-  const sharedUrl = matchUrls ? matchUrls[0] : null;
-
-  let domainName = '';
-  let cleanUrlTitle = '';
-  if (sharedUrl) {
-    try {
-      const parsedUrl = new URL(sharedUrl);
-      domainName = parsedUrl.hostname.replace('www.', '');
-      cleanUrlTitle = parsedUrl.pathname !== '/' ? parsedUrl.pathname.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') : domainName;
-    } catch {
-      domainName = sharedUrl;
-      cleanUrlTitle = sharedUrl;
-    }
-  }
-
-  const [ogData, setOgData] = useState<{
-    title?: string;
-    description?: string;
-    image?: string;
-    publisher?: string;
-  } | null>(null);
-  const [isLoadingOg, setIsLoadingOg] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!sharedUrl) {
-      setOgData(null);
-      return;
-    }
-
-    let isMounted = true;
-    setIsLoadingOg(true);
-
-    fetch(`https://api.microlink.io?url=${encodeURIComponent(sharedUrl)}`)
-      .then(res => res.json())
-      .then(result => {
-        if (!isMounted) return;
-        if (result && result.status === 'success' && result.data) {
-          setOgData({
-            title: result.data.title,
-            description: result.data.description,
-            image: result.data.image?.url,
-            publisher: result.data.publisher || domainName,
-          });
-        }
-      })
-      .catch(err => {
-        console.warn('Failed to fetch Open Graph metadata:', err);
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoadingOg(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [sharedUrl]);
 
   return (
     <motion.article
@@ -565,7 +685,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
           >
             {isVideo ? (
               <video
-                src={post.imageUrl}
+                src={mediaUrl}
                 autoPlay
                 loop
                 muted
@@ -574,8 +694,8 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
               />
             ) : (
               <img
-                src={post.imageUrl}
-                alt={post.caption}
+                src={mediaUrl}
+                alt={post.caption || 'Post image'}
                 loading="lazy"
                 decoding="async"
                 onLoad={() => setImageLoaded(true)}
@@ -584,6 +704,24 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 }`}
               />
             )}
+
+            {/* Floating Emoji Reaction Burst Animation */}
+            <AnimatePresence>
+              {activeBurstEmoji && (
+                <motion.div
+                  initial={{ scale: 0.4, opacity: 0, y: 30 }}
+                  animate={{ scale: [0.4, 1.4, 1.1], opacity: [0, 1, 0], y: -60 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.9, ease: 'easeOut' }}
+                  className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30"
+                >
+                  <span className="text-6xl filter drop-shadow-2xl">{activeBurstEmoji}</span>
+                  <span className="mt-2 text-xs font-bold text-white bg-black/60 px-3 py-1 rounded-full backdrop-blur-md shadow-lg">
+                    Reaction Added!
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Floating Double-tap ThumbsUp Animation */}
             <AnimatePresence>
@@ -607,20 +745,14 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
               className="absolute bottom-3.5 right-3 sm:right-3.5 flex flex-col items-center gap-3 z-10"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* 👍 1. Like Action */}
+              {/* 👍 1. Like Action (Short tap: Like/Unlike, Long-press: Reacted/Liked by list) */}
               <motion.button
                 id={`like-btn-${post.id}`}
                 type="button"
                 whileTap={{ scale: 0.88 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onReact) {
-                    onReact(post.id, 'like');
-                  } else {
-                    onLike(post.id);
-                  }
-                }}
-                aria-label={post.isLiked ? 'Unlike' : 'Like'}
+                {...likeLongPress}
+                aria-label={post.isLiked ? 'Unlike (Hold to view likes)' : 'Like (Hold to view likes)'}
+                title="Hold to see who liked or reacted"
                 className="flex flex-col items-center gap-0.5 cursor-pointer group select-none touch-manipulation focus:outline-none"
               >
                 <div
@@ -679,16 +811,14 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 </span>
               </motion.button>
 
-              {/* 💬 3. Comments Action */}
+              {/* 💬 3. Comments Action (Short tap: Open comments, Long-press: Commenters list) */}
               <motion.button
                 id={`comment-btn-${post.id}`}
                 type="button"
                 whileTap={{ scale: 0.88 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCommentClick(post);
-                }}
-                aria-label="Comments"
+                {...commentsLongPress}
+                aria-label="Comments (Hold to view commenters)"
+                title="Hold to see who commented"
                 className="flex flex-col items-center gap-0.5 cursor-pointer group select-none touch-manipulation focus:outline-none"
               >
                 <div className="w-11 h-11 rounded-full bg-black/40 hover:bg-black/55 text-white border border-white/30 backdrop-blur-md flex items-center justify-center transition-all shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
@@ -833,16 +963,14 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 </motion.div>
               )}
 
-              {/* View Comments Link */}
+              {/* View Comments Link (Tap: comments, Hold: commenters list) */}
               {postComments.length > 0 && (
                 <div>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCommentClick(post);
-                    }}
-                    className="text-[13px] font-semibold text-slate-400 hover:text-[#5B9DFF] transition-colors cursor-pointer"
+                    {...commentsLinkLongPress}
+                    title="Tap to view comments, hold to see commenters"
+                    className="text-[13px] font-semibold text-slate-400 hover:text-[#5B9DFF] transition-colors cursor-pointer select-none"
                   >
                     {t('feed_comments_view_all', { count: postComments.length })}
                   </button>
@@ -851,7 +979,34 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
             </div>
           )}
 
-          {/* Clean, Slightly Larger Comments Input Box (Requirement 1) */}
+          {/* Active Emoji Reaction Badges (Clean UI: Only Emoji Pills with Count, Long-press to view users list) */}
+          {Array.isArray(post.reactions) && post.reactions.length > 0 && (
+            <div className="pt-2 pb-0.5 flex items-center flex-wrap gap-1.5 min-w-0 border-t border-slate-100/90">
+              {post.reactions.map((reaction) => {
+                const isUserReacted =
+                  post.userEmojiReaction === reaction.emoji ||
+                  (currentUser?.id && reaction.userIds?.includes(currentUser.id));
+
+                return (
+                  <ReactionPillItem
+                    key={`reaction_${reaction.emoji}`}
+                    reaction={reaction}
+                    isUserReacted={Boolean(isUserReacted)}
+                    onSelectEmoji={handleSelectEmojiReaction}
+                    onOpenModal={(emoji) => {
+                      setEngagementModal({
+                        isOpen: true,
+                        type: 'reactions',
+                        initialFilterEmoji: emoji,
+                      });
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Clean Comments Input Box with Emoji Trigger */}
           <form
             onSubmit={handleQuickCommentSubmit}
             onClick={(e) => e.stopPropagation()}
@@ -864,24 +1019,51 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="relative flex-1">
+            <div className="relative flex-1 flex items-center">
               <input
                 type="text"
                 value={commentInput}
                 onChange={(e) => setCommentInput(e.target.value)}
                 placeholder={t('feed_write_comment_placeholder')}
-                className="w-full text-[14.5px] h-11.5 pl-4 pr-11 rounded-full neu-inset text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/40"
+                className="w-full text-[14.5px] h-11.5 pl-4 pr-16 rounded-full neu-inset text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B9DFF]/40"
               />
-              {commentInput.trim() && (
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  type="submit"
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8.5 h-8.5 rounded-full bg-[#5B9DFF] text-white flex items-center justify-center shadow-md cursor-pointer hover:bg-blue-600 transition"
-                  aria-label="Post comment"
+              <div className="absolute right-2 flex items-center gap-1" ref={emojiPickerContainerRef}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowEmojiPicker((prev) => !prev);
+                  }}
+                  className="w-7.5 h-7.5 rounded-full flex items-center justify-center text-slate-400 hover:text-[#5B9DFF] hover:bg-slate-100 transition cursor-pointer"
+                  title="Add reaction emoji"
+                  aria-label="Add reaction emoji"
                 >
-                  <Send className="w-4 h-4" />
-                </motion.button>
-              )}
+                  <Smile className="w-4.5 h-4.5" />
+                </button>
+                {commentInput.trim() && (
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    type="submit"
+                    className="w-7.5 h-7.5 rounded-full bg-[#5B9DFF] text-white flex items-center justify-center shadow-md cursor-pointer hover:bg-blue-600 transition"
+                    aria-label="Post comment"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </motion.button>
+                )}
+
+                {/* Popup Emoji Picker Component */}
+                <AnimatePresence>
+                  {showEmojiPicker && (
+                    <EmojiPickerPopup
+                      selectedEmoji={post.userEmojiReaction || null}
+                      onSelectEmoji={handleSelectEmojiReaction}
+                      onClose={() => setShowEmojiPicker(false)}
+                      align="right"
+                      position="top"
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </form>
         </div>
@@ -940,6 +1122,18 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
         postId={post.id}
         onClose={() => setShowReportDialog(false)}
         onShowToast={onShowToast}
+      />
+
+      {/* Engagement Users List Modal (Reactions / Likes & Comments) */}
+      <EngagementUsersModal
+        isOpen={engagementModal.isOpen}
+        onClose={() => setEngagementModal((prev) => ({ ...prev, isOpen: false }))}
+        type={engagementModal.type}
+        post={post}
+        currentUser={currentUser}
+        allUsers={allUsers}
+        onUserClick={onUserClick}
+        initialFilterEmoji={engagementModal.initialFilterEmoji}
       />
     </motion.article>
   );

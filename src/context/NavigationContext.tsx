@@ -149,6 +149,8 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   // Perform Android Back resolution step on the current state
   const resolveBackStep = useCallback((): boolean => {
     const s = stateRef.current;
+    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
 
     // 1. Dismiss topmost floating lightboxes & popovers
     if (s.chatLightboxUrl !== null) {
@@ -400,6 +402,8 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   );
 
   const popUserProfile = useCallback(() => {
+    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
     goBack();
   }, [goBack]);
 

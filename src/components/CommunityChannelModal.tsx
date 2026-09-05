@@ -1580,7 +1580,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="relative w-10 h-10 rounded-full flex-shrink-0">
                         <img
-                          src={contact.avatar}
+                          src={contact.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                           alt={contact.name}
                           className="w-full h-full rounded-full object-cover"
                         />

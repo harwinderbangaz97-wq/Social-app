@@ -389,7 +389,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="flex items-center gap-3.5">
                   <div className="w-13 h-13 rounded-full neu-raised p-0.5 relative">
                     <img
-                      src={currentUser.avatar}
+                      src={currentUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
                       alt={currentUser.name}
                       className="w-full h-full rounded-full object-cover"
                     />

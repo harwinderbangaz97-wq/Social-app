@@ -13,6 +13,7 @@ interface HomeTabProps {
   onLike: (postId: string) => void;
   onDislike: (postId: string) => void;
   onReact: (postId: string, reaction: 'like' | 'dislike') => void;
+  onEmojiReact?: (postId: string, emoji: string) => void;
   onCommentClick: (post: Post) => void;
   onShareClick: (post: Post) => void;
   onOpenPost: (post: Post) => void;
@@ -23,6 +24,7 @@ interface HomeTabProps {
   onHidePost: (postId: string) => void;
   onUpdateCaption: (postId: string, caption: string) => void;
   onShowToast: (msg: string) => void;
+  allUsers?: User[];
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
@@ -32,11 +34,13 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   stories,
   currentUser,
   posts,
+  allUsers,
   onSelectStory,
   onAddStory,
   onLike,
   onDislike,
   onReact,
+  onEmojiReact,
   onCommentClick,
   onShareClick,
   onOpenPost,
@@ -89,9 +93,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             key={post.id}
             post={post}
             currentUser={currentUser}
+            allUsers={allUsers}
             onLike={onLike}
             onDislike={onDislike}
             onReact={onReact}
+            onEmojiReact={onEmojiReact}
             onCommentClick={onCommentClick}
             onShareClick={onShareClick}
             onOpenPost={onOpenPost}

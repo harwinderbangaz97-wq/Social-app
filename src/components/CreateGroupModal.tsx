@@ -107,7 +107,11 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             </label>
             <div className="flex items-center gap-4">
               <div className="relative w-16 h-16 rounded-full overflow-hidden neu-inset flex-shrink-0 border-2 border-blue-200">
-                <img src={groupAvatar} alt="Group Avatar" className="w-full h-full object-cover" />
+                <img
+                  src={groupAvatar || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80'}
+                  alt="Group Avatar"
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div className="flex-1 space-y-2">
                 <input
@@ -179,7 +183,11 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <img src={user.avatar} alt={user.name} className="w-9 h-9 rounded-full object-cover" />
+                      <img
+                        src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                        alt={user.name}
+                        className="w-9 h-9 rounded-full object-cover"
+                      />
                       <div className="min-w-0">
                         <h4 className="text-xs font-bold text-slate-800 truncate">{user.name}</h4>
                         <p className="text-[10px] text-slate-400 truncate">@{user.username}</p>
