@@ -9,6 +9,7 @@ import {
   updateDoc,
   query,
   orderBy,
+  limit,
   onSnapshot,
   serverTimestamp,
   Unsubscribe,
@@ -66,7 +67,7 @@ export const subscribeToChatMessages = (
 
   try {
     const messagesRef = collection(db, 'chats', chatId, 'messages');
-    const q = query(messagesRef, orderBy('createdAt', 'asc'));
+    const q = query(messagesRef, orderBy('createdAt', 'asc'), limit(50));
 
     const unsubscribe = onSnapshot(
       q,
@@ -340,8 +341,9 @@ export const subscribeToAllChatRooms = (
 ): Unsubscribe => {
   try {
     const chatsRef = collection(db, 'chats');
+    const q = query(chatsRef, limit(50));
     const unsubscribe = onSnapshot(
-      chatsRef,
+      q,
       (snapshot) => {
         const rooms: Array<{ id: string; participantIds: string[]; participants: string[]; lastMessage?: any; updatedAt?: any }> = [];
         snapshot.forEach((docSnap) => {

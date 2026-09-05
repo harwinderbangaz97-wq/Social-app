@@ -412,41 +412,6 @@ function AppContent() {
       }
     });
 
-    // Explicitly fetch posts and community users directly from Firestore on app load
-    getPostsFromFirestore().then((remotePosts) => {
-      if (remotePosts && remotePosts.length > 0) {
-        setPosts((prevPosts) => {
-          const map = new Map<string, Post>();
-          remotePosts.forEach((p) => {
-            if (p && p.id) {
-              map.set(p.id, p);
-            }
-          });
-          prevPosts.forEach((p) => map.set(p.id, p));
-          return Array.from(map.values()).sort((a, b) => {
-            const timeA = a.createdAtMs || 0;
-            const timeB = b.createdAtMs || 0;
-            return timeB - timeA;
-          });
-        });
-      }
-    }).catch(console.warn);
-
-    getUsersFromFirestore().then((remoteUsers) => {
-      if (remoteUsers && remoteUsers.length > 0) {
-        setUsers((prevUsers) => {
-          const map = new Map<string, User>();
-          remoteUsers.forEach((u) => {
-            if (u && u.id) {
-              map.set(u.id, u);
-            }
-          });
-          prevUsers.forEach((u) => map.set(u.id, u));
-          return Array.from(map.values());
-        });
-      }
-    }).catch(console.warn);
-
     // 2. Real-time Firestore Subscriptions for Posts, Stories, Chat Threads, Users, and Notifications
     const unsubPosts = subscribeToPosts((remotePosts) => {
       if (remotePosts) {
@@ -486,45 +451,6 @@ function AppContent() {
       }
     });
 
-    const unsubThreads = subscribeToChatThreads((remoteThreads) => {
-      if (remoteThreads && remoteThreads.length > 0) {
-        setChatThreads((prevThreads) => {
-          const map = new Map<string, ChatThread>();
-          prevThreads.forEach((t) => map.set(t.id, t));
-          remoteThreads.forEach((t) => {
-            if (t && t.id) {
-              const currentUid = auth.currentUser?.uid || currentUser.id;
-              // Filter to only include threads for the current user
-              const involvesUser = t.isGroup
-                ? t.groupMembers?.some((m) => m.id === currentUid)
-                : t.id.includes(currentUid);
-
-              if (involvesUser) {
-                const existing = map.get(t.id);
-                if (existing && existing.messages && existing.messages.length > 0) {
-                   t.messages = existing.messages;
-                }
-                
-                // Dynamically resolve participant for 1-on-1 chats
-                if (!t.isGroup && users.length > 0) {
-                  const otherUserId = t.id.split('_').find(id => id !== currentUid);
-                  if (otherUserId) {
-                    const otherUser = users.find(u => u.id === otherUserId);
-                    if (otherUser) {
-                      t.participant = otherUser;
-                    }
-                  }
-                }
-
-                map.set(t.id, t);
-              }
-            }
-          });
-          return Array.from(map.values());
-        });
-      }
-    });
-
     const unsubUsers = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
         setUsers((prevUsers) => {
@@ -533,21 +459,6 @@ function AppContent() {
           remoteUsers.forEach((u) => {
             if (u && u.id) {
               map.set(u.id, u);
-            }
-          });
-          return Array.from(map.values());
-        });
-      }
-    });
-
-    const unsubNotifs = subscribeToNotifications((remoteNotifs) => {
-      if (remoteNotifs && remoteNotifs.length > 0) {
-        setNotifications((prevNotifs) => {
-          const map = new Map<string, NotificationItem>();
-          prevNotifs.forEach((n) => map.set(n.id, n));
-          remoteNotifs.forEach((n) => {
-            if (n && n.id) {
-              map.set(n.id, n);
             }
           });
           return Array.from(map.values());
@@ -575,14 +486,64 @@ function AppContent() {
       unsubscribeAuth();
       unsubPosts();
       unsubStories();
-      unsubThreads();
       unsubUsers();
-      unsubNotifs();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       delete (window as unknown as { __onFunshannNetworkRecovered?: () => void }).__onFunshannNetworkRecovered;
     };
   }, []);
+
+  // 3. User-specific real-time subscriptions (Chat Threads, Notifications)
+  // These depend on currentUser.id being available and update whenever it changes
+  useEffect(() => {
+    const currentUid = currentUser?.id;
+    if (!currentUid) return;
+
+    const unsubThreads = subscribeToChatThreads((remoteThreads) => {
+      if (remoteThreads && remoteThreads.length > 0) {
+        setChatThreads((prevThreads) => {
+          const map = new Map<string, ChatThread>();
+          prevThreads.forEach((t) => map.set(t.id, t));
+          remoteThreads.forEach((t) => {
+            if (t && t.id) {
+              // Dynamically resolve participant for 1-on-1 chats
+              if (!t.isGroup && users.length > 0) {
+                const otherUserId = t.id.split('_').find(id => id !== currentUid);
+                if (otherUserId) {
+                  const otherUser = users.find(u => u.id === otherUserId);
+                  if (otherUser) {
+                    t.participant = otherUser;
+                  }
+                }
+              }
+              map.set(t.id, t);
+            }
+          });
+          return Array.from(map.values());
+        });
+      }
+    }, currentUid);
+
+    const unsubNotifs = subscribeToNotifications((remoteNotifs) => {
+      if (remoteNotifs && remoteNotifs.length > 0) {
+        setNotifications((prevNotifs) => {
+          const map = new Map<string, NotificationItem>();
+          prevNotifs.forEach((n) => map.set(n.id, n));
+          remoteNotifs.forEach((n) => {
+            if (n && n.id) {
+              map.set(n.id, n);
+            }
+          });
+          return Array.from(map.values());
+        });
+      }
+    }, currentUid);
+
+    return () => {
+      unsubThreads();
+      unsubNotifs();
+    };
+  }, [currentUser?.id, users.length]);
 
   const handleUpdateTheme = (newTheme: ThemeMode) => {
     setTheme(newTheme);

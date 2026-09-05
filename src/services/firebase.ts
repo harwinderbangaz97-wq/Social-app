@@ -1447,7 +1447,7 @@ export const subscribeToChatMessages = (threadId: string, callback: (messages: M
   if (!threadId) return () => {};
   try {
     const messagesRef = collection(db, 'chat_threads', threadId, 'messages');
-    const q = query(messagesRef, orderBy('createdAt', 'asc'));
+    const q = query(messagesRef, orderBy('createdAt', 'asc'), limit(50));
     const unsubscribe = onSnapshot(
       q,
       { includeMetadataChanges: true },
@@ -1495,10 +1495,15 @@ export const getChatThreadsFromFirestore = async (limitCount = 25): Promise<Chat
   }
 };
 
-export const subscribeToChatThreads = (callback: (threads: ChatThread[]) => void, limitCount = 25): (() => void) => {
+export const subscribeToChatThreads = (callback: (threads: ChatThread[]) => void, userId: string, limitCount = 25): (() => void) => {
+  if (!userId) return () => {};
   try {
     const threadsRef = collection(db, 'chat_threads');
-    const q = query(threadsRef, limit(limitCount));
+    const q = query(
+      threadsRef, 
+      where('participantIds', 'array-contains', userId),
+      limit(limitCount)
+    );
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -1599,7 +1604,7 @@ export const getStoriesFromFirestore = async (): Promise<Story[]> => {
   try {
     await ensureFirebaseAuth();
     const storiesRef = collection(db, 'stories');
-    const q = query(storiesRef, limit(50));
+    const q = query(storiesRef, limit(20));
     const querySnapshot = await getDocs(q);
     const result: Story[] = [];
     querySnapshot.forEach((docSnap) => {
@@ -1617,8 +1622,9 @@ export const getStoriesFromFirestore = async (): Promise<Story[]> => {
 export const subscribeToStories = (callback: (stories: Story[]) => void): (() => void) => {
   try {
     const storiesRef = collection(db, 'stories');
+    const q = query(storiesRef, limit(20));
     const unsubscribe = onSnapshot(
-      storiesRef,
+      q,
       (snapshot) => {
         const result: Story[] = [];
         snapshot.forEach((docSnap) => {
@@ -1675,7 +1681,7 @@ export const getNotificationsFromFirestore = async (): Promise<NotificationItem[
   try {
     await ensureFirebaseAuth();
     const notifsRef = collection(db, 'notifications');
-    const q = query(notifsRef, limit(50));
+    const q = query(notifsRef, limit(20));
     const querySnapshot = await getDocs(q);
     const result: NotificationItem[] = [];
     querySnapshot.forEach((docSnap) => {
@@ -1690,11 +1696,17 @@ export const getNotificationsFromFirestore = async (): Promise<NotificationItem[
   }
 };
 
-export const subscribeToNotifications = (callback: (notifications: NotificationItem[]) => void): (() => void) => {
+export const subscribeToNotifications = (callback: (notifications: NotificationItem[]) => void, userId: string): (() => void) => {
+  if (!userId) return () => {};
   try {
     const notifsRef = collection(db, 'notifications');
+    const q = query(
+      notifsRef, 
+      where('targetUserId', '==', userId),
+      limit(20)
+    );
     const unsubscribe = onSnapshot(
-      notifsRef,
+      q,
       (snapshot) => {
         const result: NotificationItem[] = [];
         snapshot.forEach((docSnap) => {
@@ -1808,7 +1820,7 @@ export const syncBugReportToFirestore = async (report: BugReportItem): Promise<v
 export const subscribeToUniversalReports = (callback: (reports: any[]) => void): (() => void) => {
   try {
     const reportsRef = collection(db, 'universal_reports');
-    const q = query(reportsRef, orderBy('syncedAt', 'desc'));
+    const q = query(reportsRef, orderBy('syncedAt', 'desc'), limit(20));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -1867,7 +1879,7 @@ export const deleteUniversalReportFromFirestore = async (reportId: string): Prom
 export const subscribeToAllPosts = (callback: (posts: Post[]) => void): (() => void) => {
   try {
     const postsRef = collection(db, 'posts');
-    const q = query(postsRef, orderBy('createdAt', 'desc'));
+    const q = query(postsRef, orderBy('createdAt', 'desc'), limit(20));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {

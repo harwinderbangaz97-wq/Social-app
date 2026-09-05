@@ -65,6 +65,7 @@ import {
   query,
   orderBy,
   onSnapshot,
+  limit,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db, auth, getUserProfileFromFirestore, uploadChatMediaToStorage, isValidMediaUrl } from '../services/firebase';
@@ -916,7 +917,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
     const q = query(
       collection(db, 'chats', chatId, 'messages'),
-      orderBy('createdAt', 'asc')
+      orderBy('createdAt', 'asc'),
+      limit(50)
     );
 
     const unsubscribe = onSnapshot(
