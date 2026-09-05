@@ -54,6 +54,81 @@ export const UploadMediaModal: React.FC<UploadMediaModalProps> = ({
   const [activeFilter, setActiveFilter] = useState('none');
   const [isPublishing, setIsPublishing] = useState(false);
 
+  // Custom manual location suggestions search & fallback
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  React.useEffect(() => {
+    if (!location.trim()) {
+      setSuggestions([
+        'Kyoto, Japan',
+        'Amritsar, Punjab',
+        'San Francisco, CA',
+        'Amalfi Coast, Italy',
+        'London, United Kingdom',
+        'New York, NY',
+        'Paris, France',
+        'Barcelona, Spain',
+        'Sydney, Australia',
+        'Goa, India'
+      ]);
+      return;
+    }
+
+    const staticPresets = [
+      'Kyoto, Japan',
+      'Amritsar, Punjab',
+      'San Francisco, CA',
+      'Amalfi Coast, Italy',
+      'London, United Kingdom',
+      'New York, NY',
+      'Paris, France',
+      'Barcelona, Spain',
+      'Sydney, Australia',
+      'Goa, India',
+      'Toronto, Canada',
+      'Dubai, UAE',
+      'Cape Town, South Africa'
+    ];
+
+    const filtered = staticPresets.filter((p) =>
+      p.toLowerCase().includes(location.toLowerCase())
+    );
+
+    setSuggestions(filtered);
+
+    const delayDebounce = setTimeout(async () => {
+      if (location.trim().length > 2) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+              location
+            )}&limit=5`,
+            { signal: controller.signal }
+          );
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const data = await res.json();
+            const fetched = data.map((item: any) => {
+              const parts = item.display_name.split(',');
+              return parts.slice(0, 3).join(', ').trim();
+            });
+            setSuggestions((prev) => {
+              const merged = [...prev, ...fetched];
+              return Array.from(new Set(merged));
+            });
+          }
+        } catch (err) {
+          // Fall back gracefully
+        }
+      }
+    }, 450);
+
+    return () => clearTimeout(delayDebounce);
+  }, [location]);
+
   React.useEffect(() => {
     if (initialImage) {
       if (initialImage.endsWith('.mp4') || initialImage.startsWith('data:video')) {
@@ -332,15 +407,44 @@ export const UploadMediaModal: React.FC<UploadMediaModalProps> = ({
               <span>{isDetectingLocation ? 'Detecting...' : 'Current Location'}</span>
             </button>
           </div>
-          <div className="w-full neu-inset rounded-full h-11 px-4 flex items-center gap-2.5">
-            <MapPin className="w-4.5 h-4.5 text-[#5B9DFF] flex-shrink-0" />
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. Kyoto, Japan or Amalfi Coast"
-              className="w-full bg-transparent text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
-            />
+          <div className="relative w-full">
+            <div className="w-full neu-inset rounded-full h-11 px-4 flex items-center gap-2.5">
+              <MapPin className="w-4.5 h-4.5 text-[#5B9DFF] flex-shrink-0" />
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => {
+                  setLocation(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => {
+                  setTimeout(() => setShowSuggestions(false), 250);
+                }}
+                placeholder="e.g. Kyoto, Japan or Amalfi Coast"
+                className="w-full bg-transparent text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
+              />
+            </div>
+
+            {/* Manual Location Search Dropdown Fallback */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 mt-1.5 max-h-48 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-xl z-30 p-2 space-y-1 divide-y divide-slate-50 dark:divide-slate-800/60 scrollbar-none">
+                {suggestions.map((sug, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onMouseDown={() => {
+                      setLocation(sug);
+                      setShowSuggestions(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-[#5B9DFF] dark:hover:text-[#5B9DFF] hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition flex items-center gap-2 cursor-pointer"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">{sug}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

@@ -53,6 +53,7 @@ import {
   updatePostInFirestore,
   subscribeToPosts,
   syncStoryToFirestore,
+  recordStoryViewInFirestore,
   deleteStoryFromFirestore,
   subscribeToStories,
   syncChatThreadToFirestore,
@@ -1660,6 +1661,36 @@ function AppContent() {
     }
   };
 
+  // Record a view event on a story
+  const handleStoryView = (storyId: string, viewer: User) => {
+    const targetStory = stories.find((s) => s.id === storyId);
+    if (!targetStory) return;
+    if (targetStory.userId === viewer.id) return;
+
+    recordStoryViewInFirestore(storyId, viewer).catch(console.warn);
+
+    setStories((prevStories) =>
+      prevStories.map((story) => {
+        if (story.id === storyId) {
+          const alreadyViewed = story.viewerIds?.includes(viewer.id);
+          if (alreadyViewed) return story;
+
+          const nextViewerIds = [...(story.viewerIds || []), viewer.id];
+          const nextViewers = [...(story.viewers || []), viewer];
+          const nextViewsCount = Math.max(story.viewsCount || 0, nextViewerIds.length);
+
+          return {
+            ...story,
+            viewerIds: nextViewerIds,
+            viewers: nextViewers,
+            viewsCount: nextViewsCount,
+          };
+        }
+        return story;
+      })
+    );
+  };
+
   // Profile data resolution from navigation history
   const currentProfileUser = navState.profileHistory && navState.profileHistory.length > 0
     ? navState.profileHistory[navState.profileHistory.length - 1]
@@ -1936,6 +1967,7 @@ function AppContent() {
               initialIndex={navState.selectedStoryIndex}
               isOpen={navState.selectedStoryIndex !== null}
               currentUser={currentUser}
+              allUsers={users}
               onClose={closeStoryViewer}
               onSendReply={(storyUserId, text) => {
                 handleSendMessage(storyUserId, text);
@@ -1944,6 +1976,7 @@ function AppContent() {
               }}
               onUserClick={handleOpenProfile}
               onToggleLike={handleToggleLikeStory}
+              onStoryView={handleStoryView}
             />
           )}
 

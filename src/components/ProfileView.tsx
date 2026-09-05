@@ -345,7 +345,8 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
 
   return (
     <div
-      className="w-full max-w-lg mx-auto px-4 pb-36 pt-2 min-h-full overflow-y-auto overscroll-y-contain"
+      id="profile-view-wrapper"
+      className="w-full max-w-lg mx-auto px-4 pb-36 pt-2 overflow-y-auto"
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Top Header Bar when viewing another user's profile */}

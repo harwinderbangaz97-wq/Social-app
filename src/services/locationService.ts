@@ -101,8 +101,30 @@ export async function getDeviceCurrentLocation(): Promise<LocationResult | null>
           longitude,
         });
       },
-      (error) => {
-        console.warn('Geolocation lookup notice:', error.message);
+      async (error) => {
+        console.warn('Geolocation lookup notice, trying IP-based fallback:', error.message);
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000);
+          const ipRes = await fetch('https://ipapi.co/json/', { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (ipRes.ok) {
+            const ipData = await ipRes.json();
+            if (ipData.city && (ipData.region || ipData.country_name)) {
+              const regionStr = ipData.region || ipData.country_name;
+              const formatted = `${ipData.city}, ${regionStr}`;
+              resolve({
+                city: ipData.city,
+                formatted,
+                latitude: ipData.latitude || 0,
+                longitude: ipData.longitude || 0,
+              });
+              return;
+            }
+          }
+        } catch (ipErr) {
+          console.warn('IP location fallback failed:', ipErr);
+        }
         resolve(null);
       },
       {
