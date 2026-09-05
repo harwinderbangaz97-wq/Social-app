@@ -461,7 +461,7 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28 }}
-      className="w-full max-w-[550px] md:max-w-[570px] mx-auto px-3 sm:px-4 mb-4"
+      className="w-full max-w-[600px] md:max-w-[650px] mx-auto px-1 sm:px-2 mb-2"
     >
       <div
         className="w-full bg-white rounded-[24px] border border-slate-100/90 shadow-[0_2px_14px_rgba(0,0,0,0.05)] overflow-hidden transition-all group"
@@ -704,10 +704,10 @@ const FeedCardComponent: React.FC<FeedCardProps> = ({
           </div>
         </div>
 
-        {/* Middle: 3:4 Portrait Media Content with Floating Overlaid Engagement Controls */}
-        <div className="px-3 sm:px-3.5 py-1">
+        {/* Middle: 4:5 Portrait Media Content with Floating Overlaid Engagement Controls */}
+        <div className="px-1 sm:px-1.5 py-0">
           <div
-            className="relative w-full aspect-[3/4] rounded-[22px] overflow-hidden bg-slate-950 cursor-pointer select-none shadow-xs"
+            className="relative w-full aspect-[4/5] rounded-[22px] overflow-hidden bg-slate-950 cursor-pointer select-none shadow-xs"
             onClick={handleMediaTap}
           >
             {isVideo ? (

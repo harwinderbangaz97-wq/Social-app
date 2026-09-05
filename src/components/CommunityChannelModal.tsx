@@ -89,7 +89,6 @@ interface CommunityChannelModalProps {
     description: string;
     category: string;
     isPrivate: boolean;
-    adminName: string;
     ownerId?: string;
     gradient: string;
     avatarUrl?: string;
@@ -98,10 +97,8 @@ interface CommunityChannelModalProps {
     lastMessage?: string;
   };
   isJoined: boolean;
-  isOwner: boolean;
   isMuted?: boolean;
   onJoinToggle: () => void;
-  onOpenOwnerAdmin: () => void;
   onShowToast?: (msg: string, type?: 'success' | 'info' | 'warning') => void;
   onForwardMessage?: (receiverId: string, text?: string, imageUrl?: string, voiceNote?: VoiceNoteData) => void;
   users: User[];
@@ -112,10 +109,8 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
   onClose,
   community,
   isJoined,
-  isOwner,
   isMuted = false,
   onJoinToggle,
-  onOpenOwnerAdmin,
   onShowToast,
   onForwardMessage,
   users,
@@ -151,7 +146,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
 
   // Community Roster State
   const [rosterMembers, setRosterMembers] = useState<RosterMember[]>([
-    { id: 'mem1', name: community.adminName || 'Community Owner', role: 'Owner', badge: '👑 Owner' },
+    { id: 'mem1', name: 'Community Owner', role: 'Owner', badge: '👑 Owner' },
     { id: 'mem2', name: 'Alex Rivera', role: 'Admin', badge: '🛡️ Admin' },
     { id: 'mem3', name: 'Jordan Smith', role: 'Moderator', badge: '⚡ Mod' },
     { id: 'mem4', name: 'Sam Wilson', role: 'Member', badge: 'Member' },
@@ -209,11 +204,11 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
   const [messages, setMessages] = useState<CommunityMessage[]>([
     {
       id: 'm1',
-      senderName: community.adminName || 'Community Owner',
+      senderName: 'Community Owner',
       senderRole: 'Owner',
       text: `Welcome everyone to ${community.name}! 🎉 Feel free to share ideas and ask questions here in our general channel.`,
       timestamp: '10:00 AM',
-      isMe: isOwner,
+      isMe: false,
       reactions: [
         { emoji: '❤️', count: 8, reacted: true },
         { emoji: '🔥', count: 5, reacted: false },
@@ -240,7 +235,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
     {
       id: 'm4',
       senderName: 'You',
-      senderRole: isOwner ? 'Owner' : 'Member',
+      senderRole: 'Member',
       text: community.lastMessage || 'Hey team! Anyone working on new updates this afternoon?',
       timestamp: '11:30 AM',
       isMe: true,
@@ -342,8 +337,8 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
 
     const voiceMsg: CommunityMessage = {
       id: Date.now().toString(),
-      senderName: isOwner ? `${community.adminName} (You)` : 'You',
-      senderRole: isOwner ? 'Owner' : 'Member',
+      senderName: 'You',
+      senderRole: 'Member',
       audioDuration: durationStr,
       timestamp: format12HourTime(Date.now()),
       isMe: true,
@@ -398,19 +393,19 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
     if (!inputText.trim() && !attachedMedia) return;
 
     if (isMuted) {
-      if (onShowToast) onShowToast('You are muted by community owner and cannot post.', 'warning');
+      if (onShowToast) onShowToast('You are muted and cannot post.', 'warning');
       return;
     }
 
-    if (!isJoined && !isOwner) {
+    if (!isJoined) {
       if (onShowToast) onShowToast('Please join this community first to send messages.', 'info');
       return;
     }
 
     const newMsg: CommunityMessage = {
       id: Date.now().toString(),
-      senderName: isOwner ? `${community.adminName} (You)` : 'You',
-      senderRole: isOwner ? 'Owner' : 'Member',
+      senderName: 'You',
+      senderRole: 'Member',
       text: inputText.trim() || undefined,
       imageUrl: attachedMedia?.type === 'image' ? attachedMedia.url : undefined,
       videoUrl: attachedMedia?.type === 'video' ? attachedMedia.url : undefined,
@@ -443,7 +438,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
   // Admin Controls: Delete Any Message
   const handleDeleteMessage = (msgId: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
-    if (onShowToast) onShowToast('Message deleted by community admin 🗑️', 'info');
+    if (onShowToast) onShowToast('Message deleted 🗑️', 'info');
   };
 
   // Admin Controls: Member Roster Moderation (Mute / Unmute / Remove / Block)
@@ -574,9 +569,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                 <h2 className="text-sm font-extrabold text-slate-900 truncate group-hover:text-[#5B9DFF] transition-colors">
                   {community.name}
                 </h2>
-                {isOwner ? (
-                  <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-400 flex-shrink-0" />
-                ) : community.isPrivate ? (
+                {community.isPrivate ? (
                   <Lock className="w-3 h-3 text-amber-600 flex-shrink-0" />
                 ) : (
                   <Globe className="w-3 h-3 text-blue-600 flex-shrink-0" />
@@ -679,19 +672,6 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                     <Share2 className="w-4 h-4 text-[#5B9DFF]" />
                     <span>Share Community 🔗</span>
                   </button>
-
-                  {isOwner && (
-                    <button
-                      onClick={() => {
-                        setShowOptionsMenu(false);
-                        onOpenOwnerAdmin();
-                      }}
-                      className="w-full px-3 py-2 text-left rounded-xl bg-amber-50/80 hover:bg-amber-100/80 text-amber-900 font-bold flex items-center gap-2 transition cursor-pointer border border-amber-200/60"
-                    >
-                      <Settings className="w-4 h-4 text-amber-600" />
-                      <span>Owner Admin Settings ⚙️</span>
-                    </button>
-                  )}
 
                   <button
                     onClick={() => {
@@ -804,7 +784,6 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
               {/* Chat Messages List */}
               {messages.map((m) => {
                 const isMe = m.isMe;
-                const canAdminDelete = isOwner || isMe || m.senderRole === 'Owner' || m.senderRole === 'Admin';
 
                 return (
                   <div
@@ -864,16 +843,6 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                           >
                             <Forward className="w-3 h-3" />
                           </button>
-                          {canAdminDelete && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteMessage(m.id)}
-                              className="p-1 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-full border border-slate-200 shadow-sm cursor-pointer"
-                              title="Admin Delete Message"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
                         </div>
 
                         {/* Text Content */}
@@ -1174,7 +1143,7 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                         onChange={(e) => setInputText(e.target.value)}
                         placeholder={
                           isMuted
-                            ? 'Muted by community admin...'
+                            ? 'Muted by community head...'
                             : 'Send chat'
                         }
                         className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none min-w-0 font-medium disabled:opacity-50"
@@ -1270,10 +1239,10 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
 
             <div className="p-5 bg-amber-50/70 rounded-3xl border border-amber-200/80 space-y-2">
               <h4 className="font-extrabold text-amber-900 uppercase tracking-wider text-xs flex items-center gap-2">
-                <Crown className="w-4 h-4 text-amber-600 fill-amber-500" /> Community Leadership
+                <Users className="w-4 h-4 text-amber-600" /> Community Leadership
               </h4>
               <p className="text-xs text-amber-800 font-semibold">
-                Created & Headed by <span className="font-bold">{community.adminName}</span>
+                This community is managed by the community head and designated moderators.
               </p>
             </div>
           </div>
@@ -1302,8 +1271,6 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
 
               <div className="space-y-2 pt-1">
                 {rosterMembers.map((m) => {
-                  const isOwnerRow = m.role === 'Owner';
-
                   return (
                     <div key={m.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -1326,44 +1293,13 @@ export const CommunityChannelModal: React.FC<CommunityChannelModalProps> = ({
                       <div className="flex items-center gap-2">
                         <span
                           className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                            isOwnerRow
+                            m.role === 'Owner'
                               ? 'bg-amber-100 text-amber-800 border border-amber-300'
                               : 'bg-slate-200 text-slate-700'
                           }`}
                         >
                           {m.badge}
                         </span>
-
-                        {/* Admin Action Buttons for Non-Owner Members */}
-                        {!isOwnerRow && (isOwner || community.adminName === 'You') && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleToggleMuteMember(m.id)}
-                              className={`p-1.5 rounded-lg border text-xs transition cursor-pointer ${
-                                m.isMuted
-                                  ? 'bg-amber-100 text-amber-700 border-amber-300'
-                                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                              }`}
-                              title={m.isMuted ? 'Unmute Member' : 'Mute Member'}
-                            >
-                              {m.isMuted ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-                            </button>
-                            <button
-                              onClick={() => handleRemoveMember(m.id)}
-                              className="p-1.5 rounded-lg border bg-white text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
-                              title="Remove Member"
-                            >
-                              <UserMinus className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleBlockMember(m.id)}
-                              className="p-1.5 rounded-lg border bg-white text-slate-600 border-slate-200 hover:bg-rose-100 hover:text-rose-700 transition cursor-pointer"
-                              title="Block Member"
-                            >
-                              <Ban className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   );

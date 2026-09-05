@@ -17,7 +17,7 @@ const STORAGE_RESTRICTED_USERS = 'funshann_restricted_users';
 const STORAGE_BANNED_USERS = 'funshann_banned_users';
 const STORAGE_USER_WARNINGS = 'funshann_user_warnings';
 
-// Initial seed reports to showcase real admin/moderator dashboard capability
+// Initial seed reports to showcase real safety reporting capability
 export const INITIAL_SEED_REPORTS: UniversalReportItem[] = [];
 
 export const INITIAL_MODERATION_LOGS: ModerationLogEntry[] = [];
