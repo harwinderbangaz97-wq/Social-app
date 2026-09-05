@@ -262,10 +262,10 @@ const ProfileViewComponent: React.FC<ProfileViewProps> = ({
     : userPosts;
 
   const handleShareProfile = async () => {
-    const profileUrl = `${window.location.origin}${window.location.pathname}#user-${displayedUser.username}`;
+    const profileUrl = `https://funshann.blogspot.com/#user-${displayedUser.username}`;
     const shareData = {
-      title: `${displayedUser.name} (@${displayedUser.username}) on Funshann`,
-      text: `Check out ${displayedUser.name}'s profile on Funshann! ${displayedUser.bio ? displayedUser.bio.slice(0, 100) : ''}`.trim(),
+      title: 'Funshann',
+      text: `Check out @${displayedUser.username}'s profile on Funshann!`,
       url: profileUrl,
     };
 
