@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, Component, ErrorInfo, lazy, Suspense } from 'react';
-import { HashRouter as Router } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, Loader2 } from 'lucide-react';
 import {
@@ -2110,7 +2110,14 @@ export default function App() {
         <LanguageProvider>
           <PermissionAndMediaProvider>
             <NavigationProvider>
-              <AppContent />
+              <Suspense fallback={
+                <div className="min-h-screen flex flex-col items-center justify-center bg-[#f4f7fb]">
+                  <div className="w-10 h-10 border-4 border-[#5B9DFF]/20 border-t-[#5B9DFF] rounded-full animate-spin mb-4" />
+                  <p className="text-slate-500 font-medium animate-pulse">Loading App...</p>
+                </div>
+              }>
+                <AppContent />
+              </Suspense>
             </NavigationProvider>
           </PermissionAndMediaProvider>
         </LanguageProvider>
