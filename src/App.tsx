@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, Component, ErrorInfo, lazy, Suspense } from 'react';
+import { HashRouter as Router } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, Loader2 } from 'lucide-react';
 import {
@@ -2104,14 +2105,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <LanguageProvider>
-        <PermissionAndMediaProvider>
-          <NavigationProvider>
-            <AppContent />
-          </NavigationProvider>
-        </PermissionAndMediaProvider>
-      </LanguageProvider>
-    </ErrorBoundary>
+    <Router>
+      <ErrorBoundary>
+        <LanguageProvider>
+          <PermissionAndMediaProvider>
+            <NavigationProvider>
+              <AppContent />
+            </NavigationProvider>
+          </PermissionAndMediaProvider>
+        </LanguageProvider>
+      </ErrorBoundary>
+    </Router>
   );
 }
