@@ -32,6 +32,7 @@ import {
   updateDoc,
   runTransaction,
   increment,
+  arrayUnion,
   query,
   where,
   limit,
@@ -776,6 +777,26 @@ export const normalizePost = (raw: any): Post => {
 export const normalizeStory = (raw: any): Story => {
   const user = normalizeUser(raw?.user || { id: raw?.userId });
   const storyMs = parseTimestampToMs(raw?.createdAt || raw?.createdAtMs || raw?.timestamp || raw?.id);
+  const rawViewerIds: string[] = Array.isArray(raw?.viewerIds)
+    ? raw.viewerIds.filter((id: any) => typeof id === 'string')
+    : Array.isArray(raw?.viewers)
+    ? raw.viewers.map((v: any) => (typeof v === 'string' ? v : v?.id)).filter(Boolean)
+    : [];
+
+  const rawViewers: User[] = Array.isArray(raw?.viewedByUsers)
+    ? raw.viewedByUsers.map(normalizeUser)
+    : Array.isArray(raw?.viewers) && raw.viewers.length > 0 && typeof raw.viewers[0] === 'object'
+    ? raw.viewers.map(normalizeUser)
+    : [];
+
+  const rawViewsCount = typeof raw?.viewsCount === 'number'
+    ? raw.viewsCount
+    : rawViewerIds.length > 0
+    ? rawViewerIds.length
+    : typeof raw?.views === 'number'
+    ? raw.views
+    : 0;
+
   return {
     id: raw?.id || String(Date.now()),
     userId: raw?.userId || user.id,
@@ -788,7 +809,9 @@ export const normalizeStory = (raw: any): Story => {
     likesCount: typeof raw?.likesCount === 'number' ? raw.likesCount : 0,
     isLiked: Boolean(raw?.isLiked),
     likedBy: Array.isArray(raw?.likedBy) ? raw.likedBy.map(normalizeUser) : [],
-    viewsCount: typeof raw?.viewsCount === 'number' ? raw.viewsCount : 0,
+    viewsCount: rawViewsCount,
+    viewerIds: rawViewerIds,
+    viewers: rawViewers,
   };
 };
 
@@ -1479,6 +1502,52 @@ export const syncStoryToFirestore = async (story: Story): Promise<void> => {
     }, { merge: true });
   } catch (error) {
     console.warn('Firestore story sync fallback to local:', error);
+  }
+};
+
+export const recordStoryViewInFirestore = async (
+  storyId: string,
+  viewer: User
+): Promise<{ viewsCount: number; viewerIds: string[] } | null> => {
+  try {
+    await ensureFirebaseAuth();
+    if (!storyId || !viewer || !viewer.id) return null;
+    const storyRef = doc(db, 'stories', storyId);
+
+    const viewerSummary = {
+      id: viewer.id,
+      name: viewer.name || 'Funshann Member',
+      username: viewer.username || 'user',
+      avatar: viewer.avatar || '',
+      isVerified: Boolean(viewer.isVerified),
+      viewedAt: Date.now(),
+    };
+
+    try {
+      await updateDoc(storyRef, {
+        viewerIds: arrayUnion(viewer.id),
+        viewedByUsers: arrayUnion(viewerSummary),
+        viewsCount: increment(1),
+        lastViewedAt: serverTimestamp(),
+      });
+    } catch {
+      // Fallback: setDoc with merge if document or fields do not exist yet
+      await setDoc(
+        storyRef,
+        {
+          id: storyId,
+          viewerIds: arrayUnion(viewer.id),
+          viewedByUsers: arrayUnion(viewerSummary),
+          viewsCount: increment(1),
+          lastViewedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+    return { viewsCount: 1, viewerIds: [viewer.id] };
+  } catch (error) {
+    console.warn('Firestore recordStoryView error:', error);
+    return null;
   }
 };
 

@@ -43,7 +43,12 @@
       "properties": {
         "id": { "type": "string" },
         "userId": { "type": "string" },
-        "mediaUrl": { "type": "string" }
+        "mediaUrl": { "type": "string" },
+        "caption": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "viewsCount": { "type": "number" },
+        "viewerIds": { "type": "array" },
+        "viewedByUsers": { "type": "array" }
       },
       "required": ["id", "userId", "mediaUrl"]
     },

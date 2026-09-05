@@ -59,6 +59,8 @@ export interface Story {
   isLiked?: boolean;
   likedBy?: User[];
   viewsCount?: number;
+  viewerIds?: string[];
+  viewers?: User[];
 }
 
 export interface Comment {

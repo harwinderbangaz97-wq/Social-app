@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
   Heart,
@@ -29,10 +29,12 @@ interface StoryViewerModalProps {
   initialIndex: number;
   isOpen: boolean;
   currentUser: User;
+  allUsers?: User[];
   onClose: () => void;
   onSendReply?: (storyUserId: string, text: string) => void;
   onUserClick?: (user: User) => void;
   onToggleLike?: (storyId: string, isLiked: boolean) => void;
+  onStoryView?: (storyId: string, viewer: User) => void;
 }
 
 export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
@@ -40,10 +42,12 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   initialIndex,
   isOpen,
   currentUser,
+  allUsers,
   onClose,
   onSendReply,
   onUserClick,
   onToggleLike,
+  onStoryView,
 }) => {
   const { t } = useTranslation();
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -59,6 +63,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
   const lastTapRef = useRef<number>(0);
   const heartIdCounter = useRef<number>(0);
+  const recordedViewsRef = useRef<Set<string>>(new Set());
 
   // Sync state when story or index changes
   useEffect(() => {
@@ -77,6 +82,18 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
       setCurrentIndex(initialIndex);
     }
   }, [isOpen, initialIndex]);
+
+  // Track story view when viewed by user
+  useEffect(() => {
+    if (!isOpen || !stories[currentIndex] || !currentUser?.id) return;
+    const activeStory = stories[currentIndex];
+    if (!recordedViewsRef.current.has(activeStory.id)) {
+      recordedViewsRef.current.add(activeStory.id);
+      if (onStoryView) {
+        onStoryView(activeStory.id, currentUser);
+      }
+    }
+  }, [isOpen, currentIndex, stories, currentUser, onStoryView]);
 
   // Progress Bar timer
   useEffect(() => {
@@ -100,12 +117,86 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     return () => clearInterval(interval);
   }, [isOpen, isPaused, showAuthorActivitySheet, currentIndex, stories.length, onClose]);
 
-  if (!isOpen || !stories[currentIndex]) return null;
+  const currentStory = isOpen && stories[currentIndex] ? stories[currentIndex] : null;
 
-  const currentStory = stories[currentIndex];
-  const isAuthor =
-    currentStory.userId === currentUser.id ||
-    currentStory.user?.id === currentUser.id;
+  // Resolving real viewers list for the 'views' activity tab
+  const storyViewersList: User[] = useMemo(() => {
+    if (!currentStory) return [];
+    const list: User[] = [];
+    const seenUids = new Set<string>();
+
+    // 1. Full user objects from viewers / viewedByUsers
+    if (Array.isArray(currentStory.viewers)) {
+      currentStory.viewers.forEach((v) => {
+        if (v && v.id && !seenUids.has(v.id)) {
+          seenUids.add(v.id);
+          list.push(v);
+        }
+      });
+    }
+
+    // 2. Viewer IDs matched against allUsers or currentUser
+    if (Array.isArray(currentStory.viewerIds)) {
+      currentStory.viewerIds.forEach((uid) => {
+        if (uid && !seenUids.has(uid)) {
+          seenUids.add(uid);
+          if (uid === currentUser?.id) {
+            list.push(currentUser);
+          } else {
+            const found = allUsers?.find((u) => u.id === uid);
+            if (found) {
+              list.push(found);
+            } else {
+              list.push({
+                id: uid,
+                name: 'Funshann Member',
+                username: `user_${uid.slice(0, 5)}`,
+                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+                postsCount: 0,
+                followersCount: 0,
+                followingCount: 0,
+              });
+            }
+          }
+        }
+      });
+    }
+
+    // 3. Current user viewed in this session
+    if (currentUser?.id && !seenUids.has(currentUser.id)) {
+      if (recordedViewsRef.current.has(currentStory.id)) {
+        list.push(currentUser);
+      }
+    }
+
+    return list;
+  }, [currentStory, currentUser, allUsers]);
+
+  // Views count: accurately derived from story document or recorded viewers
+  const viewsCount = useMemo(() => {
+    if (!currentStory) return 0;
+    const fromDoc = currentStory.viewsCount ?? 0;
+    const fromIds = currentStory.viewerIds?.length ?? 0;
+    const fromList = storyViewersList.length;
+    return Math.max(fromDoc, fromIds, fromList);
+  }, [currentStory, storyViewersList.length]);
+
+  // Liked by users list for activity view
+  const likedByList = useMemo(() => {
+    if (!currentStory) return [];
+    return currentStory.likedBy && currentStory.likedBy.length > 0
+      ? currentStory.likedBy
+      : liked && currentUser
+      ? [currentUser]
+      : [];
+  }, [currentStory, liked, currentUser]);
+
+  const isAuthor = Boolean(
+    currentStory &&
+      (currentStory.userId === currentUser.id || currentStory.user?.id === currentUser.id)
+  );
+
+  if (!isOpen || !currentStory) return null;
 
   const handleNext = () => {
     if (currentIndex < stories.length - 1) {
@@ -189,16 +280,6 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     }
     setReplyText('');
   };
-
-  // Fallback liked by users for activity view
-  const likedByList =
-    currentStory.likedBy && currentStory.likedBy.length > 0
-      ? currentStory.likedBy
-      : liked && currentUser
-      ? [currentUser]
-      : [];
-
-  const viewsCount = currentStory.viewsCount || Math.max(1, (likesCount || 0) * 3 + 4);
 
   const storyUser: User = currentStory.user || {
     id: currentStory.userId || 'story_user',
@@ -361,13 +442,46 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 </div>
               </div>
 
-              {/* Top Controls: Total Like Count Badge for Author + Close Button */}
-              <div className="flex items-center gap-2">
+              {/* Top Controls: Total Views Counter + Total Like Count Badge for Author + Close Button */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Views Counter Badge in Header */}
+                {isAuthor ? (
+                  <motion.button
+                    id="story-author-views-badge"
+                    whileTap={{ scale: 0.92 }}
+                    onClick={() => {
+                      setActiveActivityTab('views');
+                      setShowAuthorActivitySheet(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/25 border border-blue-400/40 backdrop-blur-md text-white text-xs font-bold shadow-md hover:bg-blue-500/35 transition cursor-pointer"
+                    title="View story viewers"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-blue-300" />
+                    <span>
+                      {viewsCount} {viewsCount === 1 ? 'view' : 'views'}
+                    </span>
+                  </motion.button>
+                ) : (
+                  <div
+                    id="story-viewer-views-badge"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-black/40 border border-white/20 backdrop-blur-md text-white text-xs font-semibold shadow-md"
+                    title={`${viewsCount} ${viewsCount === 1 ? 'user watched' : 'users watched'}`}
+                  >
+                    <Eye className="w-3.5 h-3.5 text-[#5B9DFF]" />
+                    <span>
+                      {viewsCount} {viewsCount === 1 ? 'view' : 'views'}
+                    </span>
+                  </div>
+                )}
+
                 {/* Author Like Count Badge in Header */}
                 {isAuthor && (
                   <motion.button
                     whileTap={{ scale: 0.92 }}
-                    onClick={() => setShowAuthorActivitySheet(true)}
+                    onClick={() => {
+                      setActiveActivityTab('likes');
+                      setShowAuthorActivitySheet(true);
+                    }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/25 border border-rose-400/40 backdrop-blur-md text-white text-xs font-bold shadow-md hover:bg-rose-500/35 transition cursor-pointer"
                     title="View story likes"
                   >
@@ -627,40 +741,58 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                       )
                     ) : (
                       /* Viewers List */
-                      <div className="space-y-2">
-                        {likedByList.map((user, i) => (
-                          <div
-                            key={`viewer_${user.id}_${i}`}
-                            className="flex items-center justify-between p-2.5 rounded-[16px] hover:bg-slate-50 transition"
-                          >
-                            <div
-                              onClick={() => {
-                                if (onUserClick) {
-                                  onUserClick(user);
-                                  setShowAuthorActivitySheet(false);
-                                  onClose();
-                                }
-                              }}
-                              className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0"
-                            >
-                              <img
-                                src={user.avatar}
-                                alt={user.name}
-                                className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-                              />
-                              <div className="min-w-0">
-                                <h4 className="text-xs font-bold text-slate-800 truncate">
-                                  {user.name}
-                                </h4>
-                                <p className="text-[11px] text-slate-400 truncate">
-                                  @{user.username}
-                                </p>
-                              </div>
-                            </div>
-                            <span className="text-[11px] text-slate-400">{t('story_viewed_label')}</span>
+                      storyViewersList.length === 0 ? (
+                        <div className="text-center py-10">
+                          <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mx-auto mb-2">
+                            <Eye className="w-6 h-6" />
                           </div>
-                        ))}
-                      </div>
+                          <p className="text-xs font-semibold text-slate-700">{t('story_activity_no_views') || 'No views yet'}</p>
+                          <p className="text-[11px] text-slate-400">
+                            {t('story_activity_no_views_desc') || 'When members watch this story, they will appear here.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {storyViewersList.map((viewer, i) => (
+                            <div
+                              key={`story_viewer_${viewer.id}_${i}`}
+                              className="flex items-center justify-between p-2.5 rounded-[16px] hover:bg-slate-50 transition"
+                            >
+                              <div
+                                onClick={() => {
+                                  if (onUserClick) {
+                                    onUserClick(viewer);
+                                    setShowAuthorActivitySheet(false);
+                                    onClose();
+                                  }
+                                }}
+                                className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0"
+                              >
+                                <img
+                                  src={
+                                    viewer.avatar ||
+                                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+                                  }
+                                  alt={viewer.name}
+                                  className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <h4 className="text-xs font-bold text-slate-800 truncate">
+                                    {viewer.name}
+                                  </h4>
+                                  <p className="text-[11px] text-slate-400 truncate">
+                                    @{viewer.username}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full flex items-center gap-1">
+                                <Eye className="w-3 h-3 text-blue-500" />
+                                {t('story_viewed_label')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )
                     )}
                   </div>
                 </motion.div>
