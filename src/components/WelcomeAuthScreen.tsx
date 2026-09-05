@@ -350,10 +350,33 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
         setResendCooldown(30);
         setOtpCode('');
       } else {
-        setErrorMessage(res.error || 'Failed to send SMS verification code. Please check your number.');
+        if (
+          res.error?.includes('billing-not-enabled') ||
+          res.error?.includes('billing')
+        ) {
+          setErrorMessage('SMS auth requires active Firebase billing or configured Test Phone Numbers.');
+        } else if (res.error?.includes('too-many-requests') || res.error?.includes('Too many attempts')) {
+          setErrorMessage('Too many attempts. Please try again later.');
+        } else if (res.error?.includes('invalid-phone-number') || res.error?.includes('Invalid phone number')) {
+          setErrorMessage('Invalid phone number format.');
+        } else {
+          setErrorMessage(res.error || 'Failed to send SMS verification code. Please check your number.');
+        }
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'An unexpected error occurred while sending SMS code.');
+      if (
+        err?.code === 'auth/billing-not-enabled' ||
+        err?.message?.includes('billing-not-enabled') ||
+        err?.message?.includes('billing')
+      ) {
+        setErrorMessage('SMS auth requires active Firebase billing or configured Test Phone Numbers.');
+      } else if (err?.code === 'auth/too-many-requests') {
+        setErrorMessage('Too many attempts. Please try again later.');
+      } else if (err?.code === 'auth/invalid-phone-number') {
+        setErrorMessage('Invalid phone number format.');
+      } else {
+        setErrorMessage(err?.message || 'An unexpected error occurred while sending SMS code.');
+      }
     } finally {
       setIsSendingOtp(false);
     }
@@ -387,10 +410,33 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
         setSigninResendCooldown(30);
         setSigninOtpCode('');
       } else {
-        setErrorMessage(res.error || 'Failed to send SMS verification code. Please check your number.');
+        if (
+          res.error?.includes('billing-not-enabled') ||
+          res.error?.includes('billing')
+        ) {
+          setErrorMessage('SMS auth requires active Firebase billing or configured Test Phone Numbers.');
+        } else if (res.error?.includes('too-many-requests') || res.error?.includes('Too many attempts')) {
+          setErrorMessage('Too many attempts. Please try again later.');
+        } else if (res.error?.includes('invalid-phone-number') || res.error?.includes('Invalid phone number')) {
+          setErrorMessage('Invalid phone number format.');
+        } else {
+          setErrorMessage(res.error || 'Failed to send SMS verification code. Please check your number.');
+        }
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'An unexpected error occurred while sending SMS code.');
+      if (
+        err?.code === 'auth/billing-not-enabled' ||
+        err?.message?.includes('billing-not-enabled') ||
+        err?.message?.includes('billing')
+      ) {
+        setErrorMessage('SMS auth requires active Firebase billing or configured Test Phone Numbers.');
+      } else if (err?.code === 'auth/too-many-requests') {
+        setErrorMessage('Too many attempts. Please try again later.');
+      } else if (err?.code === 'auth/invalid-phone-number') {
+        setErrorMessage('Invalid phone number format.');
+      } else {
+        setErrorMessage(err?.message || 'An unexpected error occurred while sending SMS code.');
+      }
     } finally {
       setIsSigninSendingOtp(false);
     }

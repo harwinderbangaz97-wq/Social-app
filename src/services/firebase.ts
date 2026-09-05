@@ -251,7 +251,7 @@ export const clearRecaptchaVerifier = (buttonOrContainerId: string = 'send-otp-b
  * If it exists, calls .clear() on it and sets it to null before re-initializing.
  */
 export const initRecaptchaVerifier = (
-  buttonOrContainerId: string = 'send-otp-btn'
+  buttonOrContainerId: string = 'recaptcha-container'
 ): RecaptchaVerifier => {
   const windowObj = typeof window !== 'undefined' ? (window as any) : null;
 
@@ -268,25 +268,15 @@ export const initRecaptchaVerifier = (
 
   // 2. Ensure target element or container exists
   if (typeof document !== 'undefined') {
-    let targetElement: HTMLElement | null = document.getElementById(buttonOrContainerId);
-    let elementToBind: string | HTMLElement = buttonOrContainerId;
-
-    if (!targetElement) {
-      // Create hidden fallback container if target button not found in DOM
-      let fallbackContainer = document.getElementById('recaptcha-container');
-      if (!fallbackContainer) {
-        fallbackContainer = document.createElement('div');
-        fallbackContainer.id = 'recaptcha-container';
-        fallbackContainer.style.display = 'none';
-        document.body.appendChild(fallbackContainer);
-      }
-      elementToBind = 'recaptcha-container';
-    } else {
-      elementToBind = targetElement;
+    let fallbackContainer = document.getElementById('recaptcha-container');
+    if (!fallbackContainer) {
+      fallbackContainer = document.createElement('div');
+      fallbackContainer.id = 'recaptcha-container';
+      document.body.appendChild(fallbackContainer);
     }
 
-    // 3. Create invisible RecaptchaVerifier bound directly to the button / element
-    const verifier = new RecaptchaVerifier(auth, elementToBind, {
+    // 3. Create invisible RecaptchaVerifier bound directly to recaptcha-container
+    const verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
       size: 'invisible',
       badge: 'inline',
       callback: () => {
@@ -408,10 +398,16 @@ export const sendFirebasePhoneOtp = async (
     }
 
     let message = 'Failed to send SMS verification code. Please try again.';
-    if (error?.code === 'auth/invalid-phone-number') {
-      message = 'Invalid phone number format. Please enter a valid 10-digit mobile number.';
+    if (
+      error?.code === 'auth/billing-not-enabled' ||
+      error?.message?.includes('billing-not-enabled') ||
+      error?.message?.includes('billing')
+    ) {
+      message = 'SMS auth requires active Firebase billing or configured Test Phone Numbers.';
+    } else if (error?.code === 'auth/invalid-phone-number') {
+      message = 'Invalid phone number format.';
     } else if (error?.code === 'auth/quota-exceeded' || error?.code === 'auth/too-many-requests') {
-      message = 'SMS quota or rate limit reached. Please wait a moment before trying again.';
+      message = 'Too many attempts. Please try again later.';
     } else if (error?.code === 'auth/captcha-check-failed') {
       message = 'reCAPTCHA check failed. Please try sending the SMS code again.';
     } else if (error?.code === 'auth/invalid-app-credential') {
@@ -471,9 +467,9 @@ export const verifyFirebasePhoneOtp = async (
       message: error?.message,
       customData: error?.customData,
     });
-    let message = 'Verification failed. Please check the code and try again.';
+    let message = 'Invalid OTP code. Please check and try again.';
     if (error?.code === 'auth/invalid-verification-code') {
-      message = 'Incorrect SMS verification code. Please check your SMS and try again.';
+      message = 'Invalid OTP code. Please check and try again.';
     } else if (error?.code === 'auth/code-expired') {
       message = 'The verification code has expired. Please request a new SMS code.';
     } else if (error?.message) {
